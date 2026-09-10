@@ -4,7 +4,11 @@
 #include "core/device_image.hpp"
 
 #include <chrono>
+#include <iomanip>
+#include <iostream>
 #include <stdexcept>
+#include <string>
+#include <vector>
 
 namespace benchmark
 {
@@ -112,8 +116,22 @@ struct BenchmarkContext
     dim3 blocks{1, 1};
 };
 
+struct NamedTiming
+{
+    std::string label;
+    float milliseconds = 0.0f;
+};
+
+struct NamedSpeedup
+{
+    std::string label;
+    float factor = 0.0f;
+};
+
 struct BenchmarkResults
 {
+    std::string title;
+
     bool resultsMatch = false;
 
     int width = 0;
@@ -121,16 +139,18 @@ struct BenchmarkResults
     int channels = 0;
     int runs = 0;
 
-    float cpuMs = 0.0f;
-    float naiveKernelMs = 0.0f;
-    float sharedKernelMs = 0.0f;
+    std::vector<NamedTiming> computeTimings;
+    std::vector<NamedSpeedup> speedups;
+
+    std::string productionKernelLabel;
+    float productionKernelMs = 0.0f;
 
     float uploadMs = 0.0f;
     float downloadMs = 0.0f;
     float gpuEndToEndMs = 0.0f;
 };
 
-void setupBenchmark(
+inline void setupBenchmark(
     BenchmarkContext& context,
     const std::string& imagePath)
 {
@@ -181,6 +201,146 @@ void setupBenchmark(
 
     // Make sure setup is complete before benchmarking begins.
     CUDA_CHECK(cudaStreamSynchronize(context.stream));
+}
+
+inline void printResults(
+    const BenchmarkResults& results)
+{
+    const std::size_t imageBytes =
+        static_cast<std::size_t>(results.width) *
+        results.height *
+        results.channels;
+
+    const float imageMiB =
+        static_cast<float>(imageBytes) /
+        (1024.0f * 1024.0f);
+
+    const float transferMs =
+        results.uploadMs + results.downloadMs;
+
+    float transferPercent = 0.0f;
+    float kernelPercent = 0.0f;
+    float overheadPercent = 0.0f;
+
+    if (results.gpuEndToEndMs > 0.0f)
+    {
+        transferPercent =
+            100.0f * transferMs /
+            results.gpuEndToEndMs;
+
+        kernelPercent =
+            100.0f * results.productionKernelMs /
+            results.gpuEndToEndMs;
+
+        overheadPercent =
+            100.0f -
+            transferPercent -
+            kernelPercent;
+    }
+
+    std::cout
+        << std::fixed
+        << std::setprecision(3);
+
+    std::cout << '\n'
+              << results.title << '\n'
+              << std::string(results.title.size(), '=')
+              << '\n';
+
+    std::cout << "Image:        "
+              << results.width << " x "
+              << results.height << " x "
+              << results.channels << " channels\n";
+
+    std::cout << "Image size:   "
+              << imageMiB << " MiB\n";
+
+    std::cout << "Runs:         "
+              << results.runs << '\n';
+
+    std::cout << "Correctness:  "
+              << (results.resultsMatch ? "PASS" : "FAIL")
+              << "\n\n";
+
+    std::cout << "Compute-only\n";
+    std::cout << "------------\n";
+
+    for (const NamedTiming& timing :
+         results.computeTimings)
+    {
+        std::cout
+            << std::left
+            << std::setw(30)
+            << timing.label
+            << std::right
+            << std::setw(10)
+            << timing.milliseconds
+            << " ms\n";
+    }
+
+    std::cout << "\nGPU end-to-end\n";
+    std::cout << "--------------\n";
+
+    std::cout
+        << std::left << std::setw(30)
+        << "Host to device"
+        << std::right << std::setw(10)
+        << results.uploadMs << " ms\n";
+
+    std::cout
+        << std::left << std::setw(30)
+        << results.productionKernelLabel
+        << std::right << std::setw(10)
+        << results.productionKernelMs << " ms\n";
+
+    std::cout
+        << std::left << std::setw(30)
+        << "Device to host"
+        << std::right << std::setw(10)
+        << results.downloadMs << " ms\n";
+
+    std::cout
+        << std::left << std::setw(30)
+        << "Measured total"
+        << std::right << std::setw(10)
+        << results.gpuEndToEndMs << " ms\n";
+
+    std::cout << "\nSpeedups\n";
+    std::cout << "--------\n";
+
+    for (const NamedSpeedup& speedup :
+         results.speedups)
+    {
+        std::cout
+            << std::left
+            << std::setw(30)
+            << speedup.label
+            << std::right
+            << std::setw(10)
+            << speedup.factor
+            << "x\n";
+    }
+
+    std::cout << "\nEnd-to-end breakdown\n";
+    std::cout << "--------------------\n";
+
+    std::cout
+        << std::left << std::setw(30)
+        << "Transfers"
+        << std::right << std::setw(10)
+        << transferPercent << "%\n";
+
+    std::cout
+        << std::left << std::setw(30)
+        << "Kernel"
+        << std::right << std::setw(10)
+        << kernelPercent << "%\n";
+
+    std::cout
+        << std::left << std::setw(30)
+        << "Other overhead"
+        << std::right << std::setw(10)
+        << overheadPercent << "%\n";
 }
 
 } // namespace benchmark

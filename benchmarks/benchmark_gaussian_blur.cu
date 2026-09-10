@@ -129,88 +129,6 @@ void warmUpCpu(benchmark::BenchmarkContext& context)
     );
 }
 
-void printResults(const benchmark::BenchmarkResults& results)
-{
-    const std::size_t imageBytes =
-        static_cast<std::size_t>(results.width) *
-        results.height *
-        results.channels;
-
-    const float imageMiB =
-        static_cast<float>(imageBytes) /
-        (1024.0f * 1024.0f);
-
-    const float transferMs =
-        results.uploadMs + results.downloadMs;
-
-    const float transferPercent =
-        100.0f * transferMs / results.gpuEndToEndMs;
-
-    const float kernelPercent =
-        100.0f * results.sharedKernelMs /
-        results.gpuEndToEndMs;
-
-    const float overheadPercent =
-        100.0f - transferPercent - kernelPercent;
-
-    std::cout << std::fixed << std::setprecision(3);
-
-    std::cout << "\nGaussian Blur Benchmark\n";
-    std::cout << "=======================\n";
-    std::cout << "Image:        "
-              << results.width << " x "
-              << results.height << " RGB\n";
-    std::cout << "Image size:   " << imageMiB << " MiB\n";
-    std::cout << "Runs:         " << results.runs << '\n';
-    std::cout << "Correctness:  "
-              << (results.resultsMatch ? "PASS" : "FAIL")
-              << "\n\n";
-
-    std::cout << "Compute-only\n";
-    std::cout << "------------\n";
-    std::cout << "CPU reference:       "
-              << results.cpuMs << " ms\n";
-    std::cout << "GPU naive kernel:     "
-              << results.naiveKernelMs << " ms\n";
-    std::cout << "GPU shared kernel:    "
-              << results.sharedKernelMs << " ms\n\n";
-
-    std::cout << "GPU end-to-end\n";
-    std::cout << "--------------\n";
-    std::cout << "Host to device:       "
-              << results.uploadMs << " ms\n";
-    std::cout << "Shared kernel:         "
-              << results.sharedKernelMs << " ms\n";
-    std::cout << "Device to host:       "
-              << results.downloadMs << " ms\n";
-    std::cout << "Measured total:        "
-              << results.gpuEndToEndMs << " ms\n\n";
-
-    std::cout << "Speedups\n";
-    std::cout << "--------\n";
-    std::cout << "Naive -> shared GPU:   "
-              << results.naiveKernelMs /
-                     results.sharedKernelMs
-              << "x\n";
-    std::cout << "CPU -> GPU compute:    "
-              << results.cpuMs /
-                     results.sharedKernelMs
-              << "x\n";
-    std::cout << "CPU -> GPU end-to-end: "
-              << results.cpuMs /
-                     results.gpuEndToEndMs
-              << "x\n\n";
-
-    std::cout << "End-to-end breakdown\n";
-    std::cout << "--------------------\n";
-    std::cout << "Transfers:            "
-              << transferPercent << "%\n";
-    std::cout << "Kernel:                "
-              << kernelPercent << "%\n";
-    std::cout << "Other overhead:        "
-              << overheadPercent << "%\n";
-}
-
 int main()
 {
     benchmark::BenchmarkContext context;
@@ -243,6 +161,7 @@ int main()
         context.stream,
         [&]()
     {
+        // call benchmark-only naive kernel
         gaussianBlurGpuNaive<<<
             context.blocks,
             context.threads,
@@ -338,23 +257,47 @@ int main()
 
     benchmark::BenchmarkResults results;
 
+    results.title = "Gaussian Blur Benchmark";
     results.width = context.input.width;
     results.height = context.input.height;
     results.channels = context.input.channels;
     results.runs = RUNS;
-
     results.resultsMatch =
         context.cpuOutput.pixels ==
         context.gpuOutput.pixels;
 
-    results.cpuMs = cpuAverage;
-    results.naiveKernelMs = naiveAverage;
-    results.sharedKernelMs = sharedAverage;
+    results.computeTimings =
+    {
+        {"CPU reference", cpuAverage},
+        {"GPU naive kernel", naiveAverage},
+        {"GPU shared kernel", sharedAverage}
+    };
+
+    results.productionKernelLabel =
+        "GPU shared kernel";
+
+    results.productionKernelMs = sharedAverage;
     results.uploadMs = uploadAverage;
     results.downloadMs = downloadAverage;
     results.gpuEndToEndMs = gpuEndToEndAverage;
 
-    printResults(results);
+    results.speedups =
+    {
+        {
+            "Naive to shared GPU",
+            naiveAverage / sharedAverage
+        },
+        {
+            "CPU to GPU compute",
+            cpuAverage / sharedAverage
+        },
+        {
+            "CPU to GPU end-to-end",
+            cpuAverage / gpuEndToEndAverage
+        }
+    };
+
+    benchmark::printResults(results);
 
     CUDA_CHECK(cudaStreamDestroy(context.stream));
 

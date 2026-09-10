@@ -167,10 +167,9 @@ int main()
 {
     try
     {
-        // This image is already grayscale, which is what sobelCpu expects.
         benchmark::BenchmarkContext context;
 
-        benchmark::setupBenchmark(context, "lena_grayscale.jpg");
+        benchmark::setupBenchmark(context, "lena_grayscale.png");
 
         warmUpCpu(context);
         warmUpGpu(context);
@@ -188,7 +187,7 @@ int main()
             );
         });
 
-        const float naiveAverage =
+        const float gpuAverage =
         benchmark::averageCuda(
             RUNS,
             context.stream,
@@ -231,6 +230,101 @@ int main()
             << "output/lena_sobel_cpu.png\n"
             << "Saved GPU Sobel result to "
             << "output/lena_sobel_gpu.png\n";
+
+        const HostImage& readOnlyHostInput = context.input;
+        const DeviceImage& readOnlyDeviceInput = context.deviceInput;
+
+        const float gpuEndToEndAverage =
+            benchmark::averageCpu(RUNS, [&]()
+        {
+            // CPU → GPU
+            context.deviceInput.uploadAsync(
+                readOnlyHostInput.view(),
+                context.stream
+            );
+
+            // GPU computation
+            launchEdgeDetection(
+                readOnlyDeviceInput.view(),
+                context.deviceOutput.view(),
+                context.stream
+            );
+
+            // GPU → CPU
+            context.deviceOutput.downloadAsync(
+                context.gpuOutput.view(),
+                context.stream
+            );
+
+            // Wait for the complete operation
+            CUDA_CHECK(cudaStreamSynchronize(context.stream));
+        });
+
+        const float uploadAverage =
+        benchmark::averageCpu(RUNS, [&]()
+        {
+            context.deviceInput.uploadAsync(
+                readOnlyHostInput.view(),
+                context.stream
+            );
+
+            CUDA_CHECK(cudaStreamSynchronize(context.stream));
+        });
+
+        const DeviceImage& readOnlyDeviceOutput = context.deviceOutput;
+
+        const float downloadAverage =
+        benchmark::averageCpu(RUNS, [&]()
+        {
+            readOnlyDeviceOutput.downloadAsync(
+                context.gpuOutput.view(),
+                context.stream
+            );
+
+            CUDA_CHECK(cudaStreamSynchronize(context.stream));
+        });
+
+        benchmark::BenchmarkResults results;
+
+        results.title = "Sobel Edge Detection Benchmark";
+        results.width = context.input.width;
+        results.height = context.input.height;
+        results.channels = context.input.channels;
+        results.runs = RUNS;
+
+        results.resultsMatch =
+            context.cpuOutput.pixels ==
+            context.gpuOutput.pixels;
+
+        results.computeTimings =
+        {
+            {"CPU reference", cpuAverage},
+            {"GPU Sobel kernel", gpuAverage}
+        };
+
+        results.productionKernelLabel =
+            "GPU Sobel kernel";
+
+        results.productionKernelMs = gpuAverage;
+        results.uploadMs = uploadAverage;
+        results.downloadMs = downloadAverage;
+        results.gpuEndToEndMs = gpuEndToEndAverage;
+
+        results.speedups =
+        {
+            {
+                "CPU to GPU compute",
+                cpuAverage / gpuAverage
+            },
+            {
+                "CPU to GPU end-to-end",
+                cpuAverage / gpuEndToEndAverage
+            }
+        };
+
+        benchmark::printResults(results);
+
+        CUDA_CHECK(cudaStreamDestroy(context.stream));
 
         return 0;
     }
