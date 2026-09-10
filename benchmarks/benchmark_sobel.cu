@@ -132,13 +132,13 @@ void warmUpGpu(benchmark::BenchmarkContext& context)
     const DeviceImage& readOnlyInput =
         context.deviceInput;
 
-    launchEdgeDetectionGlobalMemory(
+    launchEdgeDetection(
         readOnlyInput.view(),
         context.deviceOutput.view(),
         context.stream
     );
 
-    launchEdgeDetection(
+    launchEdgeDetectionSharedMemory(
         readOnlyInput.view(),
         context.deviceOutput.view(),
         context.stream
@@ -197,12 +197,21 @@ int main(int argc, char** argv)
             context.stream,
             [&]()
         {
-            launchEdgeDetectionGlobalMemory(
+            launchEdgeDetection(
                 readOnlyInput.view(),
                 context.deviceOutput.view(),
                 context.stream
             );
         });
+
+        context.deviceOutput.downloadAsync(
+            context.gpuOutput.view(),
+            context.stream
+        );
+        CUDA_CHECK(cudaStreamSynchronize(context.stream));
+
+        const bool globalResultsMatch =
+            context.cpuOutput.pixels == context.gpuOutput.pixels;
 
         const float sharedMemAverage =
         benchmark::averageCuda(
@@ -210,7 +219,7 @@ int main(int argc, char** argv)
             context.stream,
             [&]()
         {
-            launchEdgeDetection(
+            launchEdgeDetectionSharedMemory(
                 readOnlyInput.view(),
                 context.deviceOutput.view(),
                 context.stream
@@ -221,10 +230,13 @@ int main(int argc, char** argv)
 
         CUDA_CHECK(cudaStreamSynchronize(context.stream));
 
-        const bool resultsMatch =
+        const bool sharedResultsMatch =
             context.cpuOutput.pixels == context.gpuOutput.pixels;
 
-        const float gpuSharedEndToEndAverage =
+        const bool resultsMatch =
+            globalResultsMatch && sharedResultsMatch;
+
+        const float gpuEndToEndAverage =
             benchmark::averageGpuEndToEnd(
                 RUNS,
                 context,
@@ -269,25 +281,25 @@ int main(int argc, char** argv)
         };
 
         results.productionKernelLabel =
-            "GPU shared-memory sobel kernel";
+            "GPU global-memory sobel kernel";
 
-        results.productionKernelMs = sharedMemAverage;
+        results.productionKernelMs = globalMemAverage;
         results.uploadMs = uploadAverage;
         results.downloadMs = downloadAverage;
-        results.gpuEndToEndMs = gpuSharedEndToEndAverage;
+        results.gpuEndToEndMs = gpuEndToEndAverage;
 
         results.speedups =
         {
             {
                 "CPU to GPU compute",
-                cpuAverage / sharedMemAverage
+                cpuAverage / globalMemAverage
             },
             {
                 "CPU to GPU end-to-end",
-                cpuAverage / gpuSharedEndToEndAverage
+                cpuAverage / gpuEndToEndAverage
             },
             {
-                "Global to shared GPU memory",
+                "Shared-memory speedup",
                 globalMemAverage / sharedMemAverage
             }
         };

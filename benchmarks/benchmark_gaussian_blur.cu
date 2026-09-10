@@ -69,7 +69,11 @@ void blurPixel(
     output[pixelIndex + 2] = bSum / weightSum;
 }
 
-__global__ void gaussianBlurGpuNaive(int width, int height, const unsigned char* input, unsigned char* output)
+__global__ void gaussianBlurGlobalMemoryKernel(
+    int width,
+    int height,
+    const unsigned char* input,
+    unsigned char* output)
 {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -93,7 +97,7 @@ void gaussianBlurCpu(int width, int height, const unsigned char* input, unsigned
 
 void warmUpGpu(benchmark::BenchmarkContext& context)
 {
-    gaussianBlurGpuNaive<<<
+    gaussianBlurGlobalMemoryKernel<<<
         context.blocks,
         context.threads,
         0,
@@ -158,13 +162,13 @@ int main(int argc, char** argv)
             );
         });
 
-        const float naiveAverage =
+        const float globalMemoryAverage =
             benchmark::averageCuda(
                 RUNS,
                 context.stream,
                 [&]()
         {
-            gaussianBlurGpuNaive<<<
+            gaussianBlurGlobalMemoryKernel<<<
                 context.blocks,
                 context.threads,
                 0,
@@ -238,7 +242,7 @@ int main(int argc, char** argv)
         results.computeTimings =
         {
             {"CPU reference", cpuAverage},
-            {"GPU naive kernel", naiveAverage},
+            {"GPU global-memory kernel", globalMemoryAverage},
             {"GPU shared kernel", sharedAverage}
         };
 
@@ -250,7 +254,7 @@ int main(int argc, char** argv)
 
         results.speedups =
         {
-            {"Naive to shared GPU", naiveAverage / sharedAverage},
+            {"Global to shared GPU", globalMemoryAverage / sharedAverage},
             {"CPU to GPU compute", cpuAverage / sharedAverage},
             {"CPU to GPU end-to-end", cpuAverage / gpuEndToEndAverage}
         };

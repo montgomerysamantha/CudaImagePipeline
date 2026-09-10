@@ -254,7 +254,7 @@ void launchEdgeDetection(ConstImageView input, ImageView output, cudaStream_t st
         (input.width + threads.x - 1) / threads.x,
         (input.height + threads.y - 1) / threads.y);
 
-    sobelSharedMemKernel<<<blocks, threads, 0, stream>>>(
+    sobelGlobalMemKernel<<<blocks, threads, 0, stream>>>(
         input.width,
         input.height,
         input.data,
@@ -264,7 +264,7 @@ void launchEdgeDetection(ConstImageView input, ImageView output, cudaStream_t st
     CUDA_CHECK(cudaGetLastError());
 }
 
-void launchEdgeDetectionGlobalMemory(ConstImageView input, ImageView output, cudaStream_t stream)
+void launchEdgeDetectionSharedMemory(ConstImageView input, ImageView output, cudaStream_t stream)
 {
     validateRgbPair(input, output);
     constexpr dim3 threads(blockWidth, blockHeight);
@@ -272,7 +272,7 @@ void launchEdgeDetectionGlobalMemory(ConstImageView input, ImageView output, cud
         (input.width + threads.x - 1) / threads.x,
         (input.height + threads.y - 1) / threads.y);
 
-    sobelGlobalMemKernel<<<blocks, threads, 0, stream>>>(
+    sobelSharedMemKernel<<<blocks, threads, 0, stream>>>(
         input.width,
         input.height,
         input.data,

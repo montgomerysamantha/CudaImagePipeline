@@ -71,3 +71,32 @@ set_target_properties(
     benchmark_sobel
     PROPERTIES CUDA_RUNTIME_LIBRARY Shared
 )
+
+include(CTest)
+
+if(BUILD_TESTING)
+    add_executable(test_grayscale tests/test_grayscale.cu)
+    add_executable(test_gaussian_blur tests/test_gaussian_blur.cu)
+    add_executable(test_edge_detection tests/test_edge_detection.cu)
+    add_executable(test_pipeline tests/test_pipeline.cu)
+
+    set(cuda_test_targets
+        test_grayscale
+        test_gaussian_blur
+        test_edge_detection
+        test_pipeline
+    )
+
+    foreach(test_target IN LISTS cuda_test_targets)
+        target_link_libraries(${test_target} PRIVATE image_pipeline)
+        set_target_properties(
+            ${test_target}
+            PROPERTIES CUDA_RUNTIME_LIBRARY Shared
+        )
+    endforeach()
+
+    add_test(NAME grayscale COMMAND test_grayscale)
+    add_test(NAME gaussian_blur COMMAND test_gaussian_blur)
+    add_test(NAME edge_detection COMMAND test_edge_detection)
+    add_test(NAME pipeline COMMAND test_pipeline)
+endif()
