@@ -1,9 +1,9 @@
 #include "core/image.hpp"
 #include "pipeline/image_pipeline.hpp"
 
+#include <exception>
 #include <filesystem>
 #include <iostream>
-#include <stdexcept>
 #include <string>
 
 int main(int argc, char** argv)
@@ -44,4 +44,3 @@ int main(int argc, char** argv)
         return 1;
     }
 }
-

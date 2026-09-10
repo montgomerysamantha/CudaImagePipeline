@@ -4,9 +4,6 @@
 #include "filters/gaussian_blur.hpp"
 
 #include <iostream>
-#include <iomanip>
-#include <string>
-#include <vector>
 
 constexpr int RUNS = 20;
 

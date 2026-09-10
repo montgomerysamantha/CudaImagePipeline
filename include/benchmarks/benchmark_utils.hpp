@@ -4,6 +4,7 @@
 #include "core/device_image.hpp"
 
 #include <chrono>
+#include <cstddef>
 #include <iomanip>
 #include <iostream>
 #include <stdexcept>
@@ -216,27 +217,23 @@ inline void printResults(
         (1024.0f * 1024.0f);
 
     const float transferMs =
-        results.uploadMs + results.downloadMs;
+        results.uploadMs +
+        results.downloadMs;
 
-    float transferPercent = 0.0f;
-    float kernelPercent = 0.0f;
-    float overheadPercent = 0.0f;
+    const float componentTotal =
+        transferMs +
+        results.productionKernelMs;
 
-    if (results.gpuEndToEndMs > 0.0f)
-    {
-        transferPercent =
-            100.0f * transferMs /
-            results.gpuEndToEndMs;
+    const float transferPercent =
+        componentTotal > 0.0f
+            ? 100.0f * transferMs / componentTotal
+            : 0.0f;
 
-        kernelPercent =
-            100.0f * results.productionKernelMs /
-            results.gpuEndToEndMs;
-
-        overheadPercent =
-            100.0f -
-            transferPercent -
-            kernelPercent;
-    }
+    const float kernelPercent =
+        componentTotal > 0.0f
+            ? 100.0f * results.productionKernelMs /
+                componentTotal
+            : 0.0f;
 
     std::cout
         << std::fixed
@@ -321,7 +318,7 @@ inline void printResults(
             << "x\n";
     }
 
-    std::cout << "\nEnd-to-end breakdown\n";
+    std::cout << "\nMeasured component breakdown\n";
     std::cout << "--------------------\n";
 
     std::cout
@@ -335,12 +332,6 @@ inline void printResults(
         << "Kernel"
         << std::right << std::setw(10)
         << kernelPercent << "%\n";
-
-    std::cout
-        << std::left << std::setw(30)
-        << "Other overhead"
-        << std::right << std::setw(10)
-        << overheadPercent << "%\n";
 }
 
 } // namespace benchmark

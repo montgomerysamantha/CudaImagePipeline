@@ -4,14 +4,12 @@
 #include "core/device_image.hpp"
 #include "filters/edge_detection.hpp"
 
-#include <filesystem>
-#include <iostream>
-#include <iomanip>
 #include <algorithm>
 #include <cmath>
-#include <string>
+#include <exception>
+#include <filesystem>
+#include <iostream>
 #include <utility>
-#include <vector>
 
 constexpr int RUNS = 20;
 
