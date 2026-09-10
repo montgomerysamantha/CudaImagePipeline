@@ -46,6 +46,16 @@ target_link_libraries(
 )
 
 add_executable(
+    benchmark_grayscale
+    benchmarks/benchmark_grayscale.cu
+)
+
+target_link_libraries(
+    benchmark_grayscale
+    PRIVATE image_pipeline
+)
+
+add_executable(
     benchmark_sobel
     benchmarks/benchmark_sobel.cu
 )
@@ -56,6 +66,8 @@ target_link_libraries(
 )
 
 set_target_properties(
+    benchmark_gaussian_blur
+    benchmark_grayscale
     benchmark_sobel
     PROPERTIES CUDA_RUNTIME_LIBRARY Shared
 )

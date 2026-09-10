@@ -3,7 +3,9 @@
 #include "core/device_image.hpp"
 #include "filters/gaussian_blur.hpp"
 
+#include <exception>
 #include <iostream>
+#include <string>
 
 constexpr int RUNS = 20;
 
@@ -126,177 +128,140 @@ void warmUpCpu(benchmark::BenchmarkContext& context)
     );
 }
 
-int main()
+int main(int argc, char** argv)
 {
-    benchmark::BenchmarkContext context;
-
-    benchmark::setupBenchmark(context, "lena.jpg");
-
-    std::cout << "Image: "
-              << context.input.width << "x"
-              << context.input.height << '\n';
-
-    warmUpCpu(context);
-    warmUpGpu(context);
-
-    const DeviceImage& readOnlyInput = context.deviceInput;
-
-    const float cpuAverage =
-    benchmark::averageCpu(RUNS, [&]()
+    try
     {
-        gaussianBlurCpu(
-            context.input.width,
-            context.input.height,
-            context.input.pixels.data(),
-            context.cpuOutput.pixels.data()
+        const std::string inputPath =
+            benchmark::getInputPath(argc, argv, "assets/lena.jpg");
+
+        benchmark::BenchmarkContext context;
+        benchmark::setupBenchmark(
+            context,
+            inputPath,
+            benchmark::InputRequirement::Rgb
         );
-    });
 
-    const float naiveAverage =
-    benchmark::averageCuda(
-        RUNS,
-        context.stream,
-        [&]()
-    {
-        // call benchmark-only naive kernel
-        gaussianBlurGpuNaive<<<
-            context.blocks,
-            context.threads,
-            0,
-            context.stream>>>(
+        warmUpCpu(context);
+        warmUpGpu(context);
+
+        const DeviceImage& readOnlyInput = context.deviceInput;
+
+        const float cpuAverage =
+            benchmark::averageCpu(RUNS, [&]()
+        {
+            gaussianBlurCpu(
                 context.input.width,
                 context.input.height,
-                context.deviceInput.view().data,
-                context.deviceOutput.view().data
+                context.input.pixels.data(),
+                context.cpuOutput.pixels.data()
             );
+        });
 
-        CUDA_CHECK(cudaGetLastError());
-    });
+        const float naiveAverage =
+            benchmark::averageCuda(
+                RUNS,
+                context.stream,
+                [&]()
+        {
+            gaussianBlurGpuNaive<<<
+                context.blocks,
+                context.threads,
+                0,
+                context.stream>>>(
+                    context.input.width,
+                    context.input.height,
+                    context.deviceInput.view().data,
+                    context.deviceOutput.view().data
+                );
 
-    const float sharedAverage =
-    benchmark::averageCuda(
-        RUNS,
-        context.stream,
-        [&]()
-    {
-        launchGaussianBlur(
-            readOnlyInput.view(),
-            context.deviceOutput.view(),
-            context.stream
-        );
-    });
+            CUDA_CHECK(cudaGetLastError());
+        });
 
-    context.deviceOutput.downloadAsync(context.gpuOutput.view(), context.stream);
+        const float sharedAverage =
+            benchmark::averageCuda(
+                RUNS,
+                context.stream,
+                [&]()
+        {
+            launchGaussianBlur(
+                readOnlyInput.view(),
+                context.deviceOutput.view(),
+                context.stream
+            );
+        });
 
-    CUDA_CHECK(cudaStreamSynchronize(context.stream));
-
-    if (context.cpuOutput.pixels == context.gpuOutput.pixels)
-    {
-        std::cout << "Correctness: CPU and GPU results match\n";
-    }
-    else
-    {
-        std::cout << "Correctness: CPU and GPU results do not match\n";
-    }
-
-    const HostImage& readOnlyHostInput = context.input;
-    const DeviceImage& readOnlyDeviceInput = context.deviceInput;
-
-    const float gpuEndToEndAverage =
-        benchmark::averageCpu(RUNS, [&]()
-    {
-        // CPU → GPU
-        context.deviceInput.uploadAsync(
-            readOnlyHostInput.view(),
-            context.stream
-        );
-
-        // GPU computation
-        launchGaussianBlur(
-            readOnlyDeviceInput.view(),
-            context.deviceOutput.view(),
-            context.stream
-        );
-
-        // GPU → CPU
         context.deviceOutput.downloadAsync(
             context.gpuOutput.view(),
             context.stream
         );
-
-        // Wait for the complete operation
         CUDA_CHECK(cudaStreamSynchronize(context.stream));
-    });
 
-    const float uploadAverage =
-    benchmark::averageCpu(RUNS, [&]()
-    {
-        context.deviceInput.uploadAsync(
-            readOnlyHostInput.view(),
-            context.stream
-        );
+        const bool resultsMatch =
+            context.cpuOutput.pixels == context.gpuOutput.pixels;
 
-        CUDA_CHECK(cudaStreamSynchronize(context.stream));
-    });
+        const float gpuEndToEndAverage =
+            benchmark::averageGpuEndToEnd(
+                RUNS,
+                context,
+                launchGaussianBlur
+            );
 
-    const DeviceImage& readOnlyDeviceOutput = context.deviceOutput;
+        const float uploadAverage =
+            benchmark::averageUpload(RUNS, context);
 
-    const float downloadAverage =
-        benchmark::averageCpu(RUNS, [&]()
-    {
-        readOnlyDeviceOutput.downloadAsync(
-            context.gpuOutput.view(),
-            context.stream
-        );
+        const float downloadAverage =
+            benchmark::averageDownload(RUNS, context);
 
-        CUDA_CHECK(cudaStreamSynchronize(context.stream));
-    });
+        const std::string cpuOutputPath =
+            benchmark::makeOutputPath(inputPath, "_gaussian_cpu");
+        const std::string gpuOutputPath =
+            benchmark::makeOutputPath(inputPath, "_gaussian_gpu");
 
-    benchmark::BenchmarkResults results;
+        savePngImage(cpuOutputPath, context.cpuOutput);
+        savePngImage(gpuOutputPath, context.gpuOutput);
 
-    results.title = "Gaussian Blur Benchmark";
-    results.width = context.input.width;
-    results.height = context.input.height;
-    results.channels = context.input.channels;
-    results.runs = RUNS;
-    results.resultsMatch =
-        context.cpuOutput.pixels ==
-        context.gpuOutput.pixels;
+        std::cout << "Saved CPU result to " << cpuOutputPath << '\n'
+                  << "Saved GPU result to " << gpuOutputPath << '\n';
 
-    results.computeTimings =
-    {
-        {"CPU reference", cpuAverage},
-        {"GPU naive kernel", naiveAverage},
-        {"GPU shared kernel", sharedAverage}
-    };
+        benchmark::BenchmarkResults results;
+        results.title = "Gaussian Blur Benchmark";
+        results.inputPath = context.inputPath;
+        results.inputPreparation =
+            benchmark::describeInputPreparation(context);
+        results.width = context.input.width;
+        results.height = context.input.height;
+        results.channels = context.input.channels;
+        results.runs = RUNS;
+        results.resultsMatch = resultsMatch;
 
-    results.productionKernelLabel =
-        "GPU shared kernel";
-
-    results.productionKernelMs = sharedAverage;
-    results.uploadMs = uploadAverage;
-    results.downloadMs = downloadAverage;
-    results.gpuEndToEndMs = gpuEndToEndAverage;
-
-    results.speedups =
-    {
+        results.computeTimings =
         {
-            "Naive to shared GPU",
-            naiveAverage / sharedAverage
-        },
+            {"CPU reference", cpuAverage},
+            {"GPU naive kernel", naiveAverage},
+            {"GPU shared kernel", sharedAverage}
+        };
+
+        results.productionKernelLabel = "GPU shared kernel";
+        results.productionKernelMs = sharedAverage;
+        results.uploadMs = uploadAverage;
+        results.downloadMs = downloadAverage;
+        results.gpuEndToEndMs = gpuEndToEndAverage;
+
+        results.speedups =
         {
-            "CPU to GPU compute",
-            cpuAverage / sharedAverage
-        },
-        {
-            "CPU to GPU end-to-end",
-            cpuAverage / gpuEndToEndAverage
-        }
-    };
+            {"Naive to shared GPU", naiveAverage / sharedAverage},
+            {"CPU to GPU compute", cpuAverage / sharedAverage},
+            {"CPU to GPU end-to-end", cpuAverage / gpuEndToEndAverage}
+        };
 
-    benchmark::printResults(results);
-
-    CUDA_CHECK(cudaStreamDestroy(context.stream));
-
-    return 0;
+        benchmark::printResults(results);
+        return resultsMatch ? 0 : 1;
+    }
+    catch (const std::exception& error)
+    {
+        std::cerr << "Gaussian blur benchmark failed: "
+                  << error.what() << '\n';
+        return 1;
+    }
 }

@@ -7,8 +7,8 @@
 #include <algorithm>
 #include <cmath>
 #include <exception>
-#include <filesystem>
 #include <iostream>
+#include <string>
 #include <utility>
 
 constexpr int RUNS = 20;
@@ -159,13 +159,21 @@ void warmUpCpu(benchmark::BenchmarkContext& context)
     );
 }
 
-int main()
+int main(int argc, char** argv)
 {
     try
     {
-        benchmark::BenchmarkContext context;
+        const std::string inputPath =
+            benchmark::getInputPath(argc, argv, "assets/lena.jpg");
 
-        benchmark::setupBenchmark(context, "lena_grayscale.png");
+        benchmark::BenchmarkContext context;
+        benchmark::setupBenchmark(
+            context,
+            inputPath,
+            benchmark::InputRequirement::Grayscale,
+            3,
+            3
+        );
 
         warmUpCpu(context);
         warmUpGpu(context);
@@ -213,88 +221,45 @@ int main()
 
         CUDA_CHECK(cudaStreamSynchronize(context.stream));
 
-        std::filesystem::create_directories("output");
-
-        savePngImage(
-            "output/lena_sobel_cpu.png",
-            context.cpuOutput
-        );
-
-        savePngImage(
-            "output/lena_sobel_gpu.png",
-            context.gpuOutput
-        );
-
-        std::cout
-            << "Saved CPU Sobel result to "
-            << "output/lena_sobel_cpu.png\n"
-            << "Saved GPU Sobel result to "
-            << "output/lena_sobel_gpu.png\n";
-
-        const HostImage& readOnlyHostInput = context.input;
-        const DeviceImage& readOnlyDeviceInput = context.deviceInput;
+        const bool resultsMatch =
+            context.cpuOutput.pixels == context.gpuOutput.pixels;
 
         const float gpuSharedEndToEndAverage =
-            benchmark::averageCpu(RUNS, [&]()
-        {
-            // CPU → GPU
-            context.deviceInput.uploadAsync(
-                readOnlyHostInput.view(),
-                context.stream
+            benchmark::averageGpuEndToEnd(
+                RUNS,
+                context,
+                launchEdgeDetection
             );
-
-            // GPU computation
-            launchEdgeDetection(
-                readOnlyDeviceInput.view(),
-                context.deviceOutput.view(),
-                context.stream
-            );
-
-            // GPU → CPU
-            context.deviceOutput.downloadAsync(
-                context.gpuOutput.view(),
-                context.stream
-            );
-
-            // Wait for the complete operation
-            CUDA_CHECK(cudaStreamSynchronize(context.stream));
-        });
 
         const float uploadAverage =
-        benchmark::averageCpu(RUNS, [&]()
-        {
-            context.deviceInput.uploadAsync(
-                readOnlyHostInput.view(),
-                context.stream
-            );
-
-            CUDA_CHECK(cudaStreamSynchronize(context.stream));
-        });
-
-        const DeviceImage& readOnlyDeviceOutput = context.deviceOutput;
+            benchmark::averageUpload(RUNS, context);
 
         const float downloadAverage =
-        benchmark::averageCpu(RUNS, [&]()
-        {
-            readOnlyDeviceOutput.downloadAsync(
-                context.gpuOutput.view(),
-                context.stream
-            );
+            benchmark::averageDownload(RUNS, context);
 
-            CUDA_CHECK(cudaStreamSynchronize(context.stream));
-        });
+        const std::string cpuOutputPath =
+            benchmark::makeOutputPath(inputPath, "_sobel_cpu");
+        const std::string gpuOutputPath =
+            benchmark::makeOutputPath(inputPath, "_sobel_gpu");
+
+        savePngImage(cpuOutputPath, context.cpuOutput);
+        savePngImage(gpuOutputPath, context.gpuOutput);
+
+        std::cout << "Saved CPU Sobel result to " << cpuOutputPath << '\n'
+                  << "Saved GPU Sobel result to " << gpuOutputPath << '\n';
 
         benchmark::BenchmarkResults results;
 
         results.title = "Sobel Edge Detection Benchmark";
+        results.inputPath = context.inputPath;
+        results.inputPreparation =
+            benchmark::describeInputPreparation(context);
         results.width = context.input.width;
         results.height = context.input.height;
         results.channels = context.input.channels;
         results.runs = RUNS;
 
-        results.resultsMatch =
-            context.cpuOutput.pixels ==
-            context.gpuOutput.pixels;
+        results.resultsMatch = resultsMatch;
 
         results.computeTimings =
         {
@@ -328,10 +293,7 @@ int main()
         };
 
         benchmark::printResults(results);
-
-        CUDA_CHECK(cudaStreamDestroy(context.stream));
-
-        return 0;
+        return resultsMatch ? 0 : 1;
     }
     catch (const std::exception& error)
     {

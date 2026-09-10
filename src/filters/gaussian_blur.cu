@@ -81,7 +81,8 @@ __global__ void gaussianBlurKernel(
     const int outputIndex = (y * width + x) * 3;
     for (int channel = 0; channel < 3; ++channel)
     {
-        output[channel] = static_cast<unsigned char>(sums[channel] / weightSum);
+        output[outputIndex + channel] =
+            static_cast<unsigned char>(sums[channel] / weightSum);
     }
 }
 
@@ -108,4 +109,3 @@ void launchGaussianBlur(ConstImageView input, ImageView output, cudaStream_t str
         input.width, input.height, input.data, output.data);
     CUDA_CHECK(cudaGetLastError());
 }
-
