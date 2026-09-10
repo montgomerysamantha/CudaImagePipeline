@@ -4,10 +4,12 @@
 #include "filters/edge_detection.hpp"
 #include "filters/gaussian_blur.hpp"
 #include "filters/grayscale.hpp"
+#include "filters/heart_bokeh.hpp"
 #include "filters/resize.hpp"
 #include "filters/sharpen.hpp"
 
 #include <stdexcept>
+#include <cmath>
 #include <utility>
 
 namespace
@@ -49,6 +51,12 @@ ConstImageView readView(const DeviceImage& image)
 ImagePipeline::ImagePipeline(PipelineOptions options)
     : options_(options)
 {
+    if (options_.heartBokeh &&
+        (!std::isfinite(options_.bokehIntensity) ||
+         options_.bokehIntensity < 0 || options_.bokehIntensity > 1))
+    {
+        throw std::invalid_argument("Bokeh intensity must be finite and in [0,1]");
+    }
     CUDA_CHECK(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking));
 }
 
@@ -122,6 +130,13 @@ HostImage ImagePipeline::process(const HostImage& input, PipelineTimings* timing
         advance();
     }
 
+    if (options_.heartBokeh)
+    {
+        launchHeartBokeh(readView(*current), next->view(),
+            options_.bokehThreshold, options_.bokehIntensity, stream_);
+        advance();
+    }
+
     if (options_.edgeDetection)
     {
         launchEdgeDetection(readView(*current), next->view(), stream_);
@@ -148,4 +163,3 @@ HostImage ImagePipeline::process(const HostImage& input, PipelineTimings* timing
 
     return output;
 }
-

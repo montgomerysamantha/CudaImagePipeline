@@ -1,11 +1,62 @@
 #include "filters/gaussian_blur.hpp"
 #include "filters/grayscale.hpp"
+#include "filters/heart_bokeh.hpp"
+#include "filters/edge_detection.hpp"
+#include "reference/heart_bokeh_cpu.hpp"
 #include "pipeline/image_pipeline.hpp"
 #include "tests/test_utils.hpp"
 
 #include <exception>
 #include <iostream>
 #include <stdexcept>
+#include <limits>
+
+void testBokehPipeline()
+{
+    PipelineOptions options;
+    options.grayscale = false;
+    options.gaussianBlur = false;
+    options.heartBokeh = true;
+    options.bokehThreshold = 77;
+    options.bokehIntensity = 0.1f;
+    ImagePipeline pipeline(options);
+    // Repeat inputs and change dimensions to exercise buffer reuse/reallocation.
+    for (const auto size : {std::pair<int,int>{17,19}, {17,19}, {47,31}, {1,1}})
+    {
+        const auto input = test::makeCoordinatePatternImage(size.first,size.second);
+        auto expected = input;
+        reference::heartBokeh(input.view(),expected.view(),77,0.1f);
+        test::requirePixelsEqual(pipeline.process(input),expected,"Pipeline bokeh CPU agreement");
+    }
+    const auto input = test::makeCoordinatePatternImage(47,31);
+    options.grayscale = true;
+    options.gaussianBlur = true;
+    options.edgeDetection = true;
+    const auto gray = test::runFilter(input,launchGrayscale);
+    const auto blurred = test::runFilter(gray,launchGaussianBlur);
+    const auto bokeh = test::runFilter(blurred,
+        [&](ConstImageView a, ImageView b, cudaStream_t s)
+        { launchHeartBokeh(a,b,options.bokehThreshold,options.bokehIntensity,s); });
+    const auto expected = test::runFilter(bokeh,launchEdgeDetection);
+    test::requirePixelsEqual(ImagePipeline(options).process(input),expected,"Bokeh stage ordering");
+
+    options.grayscale = false;
+    options.gaussianBlur = false;
+    options.edgeDetection = false;
+    options.bokehIntensity = 0;
+    test::requirePixelsEqual(ImagePipeline(options).process(input),input,"Zero bokeh intensity");
+    for (float value : {-1.0f,1.1f,std::numeric_limits<float>::quiet_NaN(),
+        std::numeric_limits<float>::infinity()})
+    {
+        options.bokehIntensity = value;
+        bool rejected = false;
+        try { ImagePipeline invalid(options); }
+        catch (const std::invalid_argument&) { rejected = true; }
+        test::require(rejected,"Invalid enabled bokeh intensity");
+    }
+    options.heartBokeh = false;
+    test::requirePixelsEqual(ImagePipeline(options).process(input),input,"Disabled bokeh ignores settings");
+}
 
 void testDisabledStagesPreserveInput()
 {
@@ -245,6 +296,7 @@ int main()
     try
     {
         testDisabledStagesPreserveInput();
+        testBokehPipeline();
         testSingleEnabledStageMatchesDirectLauncher();
         testStageOrdering();
         testRepeatedProcessCalls();

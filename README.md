@@ -107,8 +107,8 @@ need to read.
 - 3x3 Sobel edge detection
   - Global-memory production kernel
   - Shared-memory experimental kernel
-- Heart-shaped bokeh, available through a standalone CPU function, CUDA launcher,
-  and benchmark (not yet a stage in `PipelineOptions`)
+- Heart-shaped bokeh, available as an optional GPU-resident pipeline stage,
+  standalone CPU function, CUDA launcher, and benchmark
   - Fixed 21x20 aperture with 282 open samples and anchor (column 10, row 8)
   - One GPU thread per output pixel; aperture stored in CUDA constant memory
   - Shared-memory production kernel with a 36x35 halo tile and 16x16 threads
@@ -297,6 +297,26 @@ Both arguments are optional. The defaults are `assets/lena.jpg` and
 
 ## Run the benchmarks
 
+To enable bokeh through the C++ pipeline API:
+
+```cpp
+PipelineOptions options;
+options.grayscale = false;    // Preserve colored highlights.
+options.gaussianBlur = false;
+options.heartBokeh = true;
+options.bokehThreshold = 200;
+options.bokehIntensity = 0.05f;
+ImagePipeline pipeline(options);
+HostImage result = pipeline.process(input);
+```
+
+Bokeh defaults to disabled and uses the shared-memory launcher when enabled.
+Stage order is grayscale, Gaussian blur, heart bokeh, Sobel, then sharpen
+(where enabled). Bokeh reuses the existing buffers and stream, so it adds no
+intermediate host transfers. Its intensity must be finite and in [0,1].
+These are C++ options; the pipeline executable's existing command-line arguments
+remain input and output paths.
+
 The grayscale, Gaussian and Sobel benchmarks accept an optional input path and fall back to
 `assets/lena.jpg`:
 
@@ -386,7 +406,6 @@ CudaLearning/
 
 ## Next steps
 
-- Integrate heart bokeh into `PipelineOptions` and test stage ordering
 - Explore alternative bokeh block shapes and profile occupancy/cache behavior
 
 - Add tests alongside the sharpen and resize implementations

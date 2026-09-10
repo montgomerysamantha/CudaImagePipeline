@@ -16,6 +16,11 @@ struct PipelineOptions
     float sharpenStrength = 1.0f;
     int outputWidth = 0;
     int outputHeight = 0;
+
+    // Runs after Gaussian blur and before edge detection.
+    bool heartBokeh = false;
+    unsigned char bokehThreshold = 200;
+    float bokehIntensity = 0.05f;
 };
 
 struct PipelineTimings
@@ -47,4 +52,3 @@ private:
     int bufferHeight_ = 0;
     int bufferChannels_ = 0;
 };
-
