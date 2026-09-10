@@ -42,3 +42,18 @@ target_link_libraries(
     benchmark_gaussian_blur
     PRIVATE image_pipeline
 )
+
+add_executable(
+    benchmark_sobel
+    benchmarks/benchmark_sobel.cu
+)
+
+target_link_libraries(
+    benchmark_sobel
+    PRIVATE image_pipeline
+)
+
+set_target_properties(
+    benchmark_sobel
+    PROPERTIES CUDA_RUNTIME_LIBRARY Shared
+)
