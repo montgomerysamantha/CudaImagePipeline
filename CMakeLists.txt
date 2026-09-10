@@ -32,3 +32,13 @@ set_target_properties(image_pipeline PROPERTIES
 
 add_executable(cuda_image_pipeline src/main.cpp)
 target_link_libraries(cuda_image_pipeline PRIVATE image_pipeline)
+
+add_executable(
+    benchmark_gaussian_blur
+    benchmarks/benchmark_gaussian_blur.cu
+)
+
+target_link_libraries(
+    benchmark_gaussian_blur
+    PRIVATE image_pipeline
+)
