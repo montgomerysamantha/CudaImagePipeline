@@ -10,39 +10,6 @@
 
 constexpr int RUNS = 20;
 
-struct BenchmarkContext
-{
-    HostImage input;
-    HostImage gpuOutput;
-    HostImage cpuOutput;
-
-    DeviceImage deviceInput;
-    DeviceImage deviceOutput;
-
-    cudaStream_t stream = nullptr;
-
-    dim3 threads{16, 16};
-    dim3 blocks{1, 1};
-};
-
-struct BenchmarkResults
-{
-    bool resultsMatch = false;
-
-    int width = 0;
-    int height = 0;
-    int channels = 0;
-    int runs = 0;
-
-    float cpuMs = 0.0f;
-    float naiveKernelMs = 0.0f;
-    float sharedKernelMs = 0.0f;
-
-    float uploadMs = 0.0f;
-    float downloadMs = 0.0f;
-    float gpuEndToEndMs = 0.0f;
-};
-
 __host__ __device__
 void blurPixel(
     int x,
@@ -125,60 +92,7 @@ void gaussianBlurCpu(int width, int height, const unsigned char* input, unsigned
     }
 }
 
-void setupBenchmark(
-    BenchmarkContext& context,
-    const std::string& imagePath)
-{
-    context.input = loadRgbImage(imagePath);
-
-    context.gpuOutput.width = context.input.width;
-    context.gpuOutput.height = context.input.height;
-    context.gpuOutput.channels = context.input.channels;
-    context.gpuOutput.pixels.resize(
-        context.input.pixels.size()
-    );
-
-    context.cpuOutput.width = context.input.width;
-    context.cpuOutput.height = context.input.height;
-    context.cpuOutput.channels = context.input.channels;
-    context.cpuOutput.pixels.resize(
-        context.input.pixels.size()
-    );
-
-    context.deviceInput.allocate(
-        context.input.width,
-        context.input.height,
-        context.input.channels
-    );
-
-    context.deviceOutput.allocate(
-        context.input.width,
-        context.input.height,
-        context.input.channels
-    );
-
-    CUDA_CHECK(cudaStreamCreate(&context.stream));
-
-    const HostImage& readOnlyInput = context.input;
-
-    context.deviceInput.uploadAsync(
-        readOnlyInput.view(),
-        context.stream
-    );
-
-    context.blocks = dim3(
-        (context.input.width + context.threads.x - 1)
-            / context.threads.x,
-
-        (context.input.height + context.threads.y - 1)
-            / context.threads.y
-    );
-
-    // Make sure setup is complete before benchmarking begins.
-    CUDA_CHECK(cudaStreamSynchronize(context.stream));
-}
-
-void warmUpGpu(BenchmarkContext& context)
+void warmUpGpu(benchmark::BenchmarkContext& context)
 {
     gaussianBlurGpuNaive<<<
         context.blocks,
@@ -205,7 +119,7 @@ void warmUpGpu(BenchmarkContext& context)
     CUDA_CHECK(cudaStreamSynchronize(context.stream));
 }
 
-void warmUpCpu(BenchmarkContext& context)
+void warmUpCpu(benchmark::BenchmarkContext& context)
 {
     gaussianBlurCpu(
         context.input.width,
@@ -215,7 +129,7 @@ void warmUpCpu(BenchmarkContext& context)
     );
 }
 
-void printResults(const BenchmarkResults& results)
+void printResults(const benchmark::BenchmarkResults& results)
 {
     const std::size_t imageBytes =
         static_cast<std::size_t>(results.width) *
@@ -299,9 +213,9 @@ void printResults(const BenchmarkResults& results)
 
 int main()
 {
-    BenchmarkContext context;
+    benchmark::BenchmarkContext context;
 
-    setupBenchmark(context, "lena.jpg");
+    benchmark::setupBenchmark(context, "lena.jpg");
 
     std::cout << "Image: "
               << context.input.width << "x"
@@ -408,8 +322,8 @@ int main()
 
         CUDA_CHECK(cudaStreamSynchronize(context.stream));
     });
-    const DeviceImage& readOnlyDeviceOutput =
-    context.deviceOutput;
+
+    const DeviceImage& readOnlyDeviceOutput = context.deviceOutput;
 
     const float downloadAverage =
         benchmark::averageCpu(RUNS, [&]()
@@ -422,7 +336,7 @@ int main()
         CUDA_CHECK(cudaStreamSynchronize(context.stream));
     });
 
-    BenchmarkResults results;
+    benchmark::BenchmarkResults results;
 
     results.width = context.input.width;
     results.height = context.input.height;

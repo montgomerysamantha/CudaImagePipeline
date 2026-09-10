@@ -1,10 +1,19 @@
 #include "core/image.hpp"
+#include "benchmarks/benchmark_utils.hpp"
+#include "core/cuda_check.hpp"
+#include "core/device_image.hpp"
+#include "filters/edge_detection.hpp"
 
 #include <filesystem>
 #include <iostream>
+#include <iomanip>
 #include <algorithm>
 #include <cmath>
+#include <string>
 #include <utility>
+#include <vector>
+
+constexpr int RUNS = 20;
 
 constexpr int sobelX[3][3] =
 {
@@ -122,37 +131,106 @@ void sobelCpu(
     }
 }
 
+void warmUpGpu(benchmark::BenchmarkContext& context)
+{
+    const DeviceImage& readOnlyInput =
+        context.deviceInput;
+
+    launchEdgeDetection(
+        readOnlyInput.view(),
+        context.deviceOutput.view(),
+        context.stream
+    );
+
+    launchEdgeDetection(
+        readOnlyInput.view(),
+        context.deviceOutput.view(),
+        context.stream
+    );
+
+    CUDA_CHECK(cudaGetLastError());
+
+    CUDA_CHECK(cudaStreamSynchronize(context.stream));
+}
+
+void warmUpCpu(benchmark::BenchmarkContext& context)
+{
+    sobelCpu(
+        context.input.width,
+        context.input.height,
+        context.input.pixels.data(),
+        context.cpuOutput.pixels.data()
+    );
+}
+
 int main()
 {
     try
     {
         // This image is already grayscale, which is what sobelCpu expects.
-        const HostImage input =
-            loadRgbImage("lena_grayscale.png");
+        benchmark::BenchmarkContext context;
 
-        HostImage output;
-        output.width = input.width;
-        output.height = input.height;
-        output.channels = input.channels;
-        output.pixels.resize(input.pixels.size());
+        benchmark::setupBenchmark(context, "lena_grayscale.jpg");
 
-        sobelCpu(
-            input.width,
-            input.height,
-            input.pixels.data(),
-            output.pixels.data()
-        );
+        warmUpCpu(context);
+        warmUpGpu(context);
+
+        const DeviceImage& readOnlyInput = context.deviceInput;
+
+        const float cpuAverage =
+        benchmark::averageCpu(RUNS, [&]()
+        {
+            sobelCpu(
+                context.input.width,
+                context.input.height,
+                context.input.pixels.data(),
+                context.cpuOutput.pixels.data()
+            );
+        });
+
+        const float naiveAverage =
+        benchmark::averageCuda(
+            RUNS,
+            context.stream,
+            [&]()
+        {
+            launchEdgeDetection(
+                readOnlyInput.view(),
+                context.deviceOutput.view(),
+                context.stream
+            );
+        });
+
+        context.deviceOutput.downloadAsync(context.gpuOutput.view(), context.stream);
+
+        CUDA_CHECK(cudaStreamSynchronize(context.stream));
+
+        if (context.cpuOutput.pixels == context.gpuOutput.pixels)
+        {
+            std::cout << "Correctness: CPU and GPU results match\n";
+        }
+        else
+        {
+            std::cout << "Correctness: CPU and GPU results do not match\n";
+        }
 
         std::filesystem::create_directories("output");
 
         savePngImage(
             "output/lena_sobel_cpu.png",
-            output
+            context.cpuOutput
+        );
+
+        savePngImage(
+            "output/lena_sobel_gpu.png",
+            context.gpuOutput
         );
 
         std::cout
             << "Saved CPU Sobel result to "
-            << "output/lena_sobel_cpu.png\n";
+            << "output/lena_sobel_cpu.png\n"
+            << "Saved GPU Sobel result to "
+            << "output/lena_sobel_gpu.png\n";
 
         return 0;
     }

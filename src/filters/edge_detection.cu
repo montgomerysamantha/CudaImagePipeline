@@ -171,6 +171,14 @@ void launchEdgeDetection(ConstImageView input, ImageView output, cudaStream_t st
 
     sobelKernel<<<blocks, threads, 0, stream>>>(
         input.width, input.height, input.data, output.data);
+
+    sobelKernel<<<blocks, threads, 0, stream>>>(
+        input.width,
+        input.height,
+        input.data,
+        output.data
+    );
+
     CUDA_CHECK(cudaGetLastError());
 }
 
