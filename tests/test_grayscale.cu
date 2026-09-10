@@ -1,8 +1,10 @@
 #include "filters/grayscale.hpp"
+#include "reference/grayscale_cpu.hpp"
 #include "tests/test_utils.hpp"
 
 #include <exception>
 #include <iostream>
+#include <stdexcept>
 
 void testKnownRgbPixels()
 {
@@ -36,19 +38,84 @@ void testKnownRgbPixels()
 
 void testAlreadyGrayscalePixelsRemainUnchanged()
 {
-    // TODO: Create an RGB-stored image whose R, G, and B values already match.
-    // Run launchGrayscale and verify that every value remains unchanged.
+    // Arrange
+    const HostImage input = test::makeRgbImage(
+        3,
+        2,
+        {
+              0,   0,   0,
+             42,  42,  42,
+            127, 127, 127,
+            180, 180, 180,
+            240, 240, 240,
+            255, 255, 255
+        }
+    );
+
+    // Act
+    const HostImage actual =
+        test::runFilter(input, launchGrayscale);
+
+    // Assert
+    test::requirePixelsEqual(
+        actual,
+        input,
+        "testAlreadyGrayscalePixelsRemainUnchanged"
+    );
 }
 
 void testDimensionsOutsideBlockSize()
 {
-    // TODO: Test an image such as 17 x 19. This exercises partial CUDA blocks.
+    // Arrange
+    const HostImage input =
+        test::makeCoordinatePatternImage(17, 19);
+
+    HostImage expected =
+        test::makeSolidRgbImage(17, 19, {0, 0, 0});
+
+    reference::grayscale(input.view(), expected.view());
+
+    // Act
+    const HostImage actual =
+        test::runFilter(input, launchGrayscale);
+
+    // Assert
+    test::requirePixelsEqual(
+        actual,
+        expected,
+        "testDimensionsOutsideBlockSize"
+    );
 }
 
 void testInvalidImageShapeIsRejected()
 {
-    // TODO: Give the launcher mismatched input/output dimensions and verify that
-    // it throws std::invalid_argument.
+    // Arrange
+    test::CudaStream stream;
+    DeviceImage deviceInput(3, 3, 3);
+    DeviceImage deviceOutput(4, 3, 3);
+    const DeviceImage& readOnlyInput = deviceInput;
+
+    bool exceptionWasThrown = false;
+
+    // Act
+    try
+    {
+        launchGrayscale(
+            readOnlyInput.view(),
+            deviceOutput.view(),
+            stream.get()
+        );
+    }
+    catch (const std::invalid_argument&)
+    {
+        exceptionWasThrown = true;
+    }
+
+    // Assert
+    test::require(
+        exceptionWasThrown,
+        "testInvalidImageShapeIsRejected: expected std::invalid_argument"
+    );
 }
 
 int main()
@@ -56,6 +123,9 @@ int main()
     try
     {
         testKnownRgbPixels();
+        testAlreadyGrayscalePixelsRemainUnchanged();
+        testDimensionsOutsideBlockSize();
+        testInvalidImageShapeIsRejected();
         std::cout << "Grayscale tests passed\n";
         return 0;
     }

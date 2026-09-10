@@ -220,16 +220,23 @@ cmake --build build --config Release
 ctest --test-dir build -C Release --output-on-failure
 ```
 
-Current automated reference tests:
+The suite currently contains 20 focused test cases:
 
-- Known RGB-to-grayscale values
-- Gaussian blur preserves a solid-color 19x17 image
-- Global- and shared-memory Sobel produce no edges for a solid image
-- A pipeline with every stage disabled preserves its input
+- **Grayscale:** known RGB values, already-gray input, dimensions that create
+  partial CUDA blocks, and invalid image shapes
+- **Gaussian blur:** solid-color preservation, a hand-calculated impulse
+  response, comparison with the CPU reference, a one-pixel image, and invalid
+  image shapes
+- **Sobel:** solid images, a known vertical edge, black border behavior,
+  global/shared-memory agreement on partial blocks, and invalid image shapes
+- **Pipeline:** disabled stages, a single stage versus its direct launcher,
+  grayscale-to-blur ordering, repeated calls, device-buffer reallocation, and
+  invalid host input
 
-Additional test outlines are included for border handling, partial CUDA blocks,
-known Sobel patterns, global/shared agreement, stage ordering, repeated calls,
-buffer reallocation, and invalid inputs.
+The small hand-calculated cases catch algorithm mistakes, while the 17x19 cases
+exercise incomplete CUDA blocks at the image boundaries. CPU/GPU and
+global/shared comparisons cover larger patterns without duplicating the kernel's
+implementation inside the test.
 
 ## Project structure
 
@@ -258,7 +265,7 @@ CudaLearning/
 
 ## Next steps
 
-- Complete the remaining outlined correctness tests
+- Add tests alongside the sharpen and resize implementations
 - Add nearest-neighbor and bilinear resize
 - Add a sharpen filter and compare direct convolution with unsharp masking
 - Benchmark the complete multi-filter pipeline against isolated filter calls

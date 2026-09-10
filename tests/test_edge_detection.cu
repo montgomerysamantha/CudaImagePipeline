@@ -3,6 +3,8 @@
 
 #include <exception>
 #include <iostream>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 void testSolidGrayscaleImageHasNoEdges()
@@ -45,25 +47,180 @@ void testSolidGrayscaleImageHasNoEdges()
 
 void testKnownVerticalEdge()
 {
-    // TODO: Make the left half of a small image black and the right half white.
-    // Calculate the expected Sobel response near the dividing line.
+    // Arrange
+    const HostImage input = test::makeGeneratedRgbImage(
+        5,
+        5,
+        [](int x, int)
+        {
+            const unsigned char value = x < 2 ? 0 : 255;
+            return test::RgbPixel{value, value, value};
+        }
+    );
+
+    HostImage expected =
+        test::makeSolidRgbImage(5, 5, {0, 0, 0});
+
+    for (int y = 1; y < 4; ++y)
+    {
+        test::setGrayscalePixel(expected, 1, y, 255);
+        test::setGrayscalePixel(expected, 2, y, 255);
+    }
+
+    // Act
+    const HostImage globalOutput =
+        test::runFilter(input, launchEdgeDetection);
+
+    const HostImage sharedOutput =
+        test::runFilter(input, launchEdgeDetectionSharedMemory);
+
+    // Assert
+    test::requirePixelsEqual(
+        globalOutput,
+        expected,
+        "global testKnownVerticalEdge"
+    );
+
+    test::requirePixelsEqual(
+        sharedOutput,
+        expected,
+        "shared testKnownVerticalEdge"
+    );
 }
 
 void testBorderPixelsAreBlack()
 {
-    // TODO: Use a non-uniform grayscale image and verify the first/last rows and
-    // columns are black for both Sobel implementations.
+    // Arrange
+    const HostImage input = test::makeGeneratedRgbImage(
+        7,
+        6,
+        [](int x, int y)
+        {
+            const unsigned char value =
+                static_cast<unsigned char>((x * 31 + y * 47) % 256);
+
+            return test::RgbPixel{value, value, value};
+        }
+    );
+
+    // Act
+    const HostImage globalOutput =
+        test::runFilter(input, launchEdgeDetection);
+
+    const HostImage sharedOutput =
+        test::runFilter(input, launchEdgeDetectionSharedMemory);
+
+    // Assert
+    const auto requireBlackBorder =
+        [](const HostImage& image, const std::string& testName)
+        {
+            for (int y = 0; y < image.height; ++y)
+            {
+                for (int x = 0; x < image.width; ++x)
+                {
+                    const bool isBorder =
+                        x == 0 || y == 0 ||
+                        x == image.width - 1 ||
+                        y == image.height - 1;
+
+                    if (!isBorder)
+                    {
+                        continue;
+                    }
+
+                    const int index = (y * image.width + x) * 3;
+                    test::require(
+                        image.pixels[index] == 0 &&
+                        image.pixels[index + 1] == 0 &&
+                        image.pixels[index + 2] == 0,
+                        testName + ": a border pixel was not black"
+                    );
+                }
+            }
+        };
+
+    requireBlackBorder(globalOutput, "global testBorderPixelsAreBlack");
+    requireBlackBorder(sharedOutput, "shared testBorderPixelsAreBlack");
 }
 
 void testGlobalAndSharedImplementationsMatch()
 {
-    // TODO: Use deterministic grayscale values in a 17 x 19 image and compare
-    // every byte produced by the global- and shared-memory launchers.
+    // Arrange
+    const HostImage input = test::makeGeneratedRgbImage(
+        17,
+        19,
+        [](int x, int y)
+        {
+            const unsigned char value =
+                static_cast<unsigned char>((x * 13 + y * 7) % 256);
+
+            return test::RgbPixel{value, value, value};
+        }
+    );
+
+    // Act
+    const HostImage globalOutput =
+        test::runFilter(input, launchEdgeDetection);
+
+    const HostImage sharedOutput =
+        test::runFilter(input, launchEdgeDetectionSharedMemory);
+
+    // Assert
+    test::requirePixelsEqual(
+        sharedOutput,
+        globalOutput,
+        "testGlobalAndSharedImplementationsMatch"
+    );
 }
 
 void testInvalidImageShapeIsRejected()
 {
-    // TODO: Verify mismatched input/output dimensions or channels throw.
+    // Arrange
+    test::CudaStream stream;
+    DeviceImage deviceInput(3, 3, 3);
+    DeviceImage deviceOutput(4, 3, 3);
+    const DeviceImage& readOnlyInput = deviceInput;
+
+    bool globalExceptionWasThrown = false;
+    bool sharedExceptionWasThrown = false;
+
+    // Act
+    try
+    {
+        launchEdgeDetection(
+            readOnlyInput.view(),
+            deviceOutput.view(),
+            stream.get()
+        );
+    }
+    catch (const std::invalid_argument&)
+    {
+        globalExceptionWasThrown = true;
+    }
+
+    try
+    {
+        launchEdgeDetectionSharedMemory(
+            readOnlyInput.view(),
+            deviceOutput.view(),
+            stream.get()
+        );
+    }
+    catch (const std::invalid_argument&)
+    {
+        sharedExceptionWasThrown = true;
+    }
+
+    // Assert
+    test::require(
+        globalExceptionWasThrown,
+        "testInvalidImageShapeIsRejected: global launcher did not reject the shape"
+    );
+
+    test::require(
+        sharedExceptionWasThrown,
+        "testInvalidImageShapeIsRejected: shared launcher did not reject the shape"
+    );
 }
 
 int main()
@@ -71,6 +228,10 @@ int main()
     try
     {
         testSolidGrayscaleImageHasNoEdges();
+        testKnownVerticalEdge();
+        testBorderPixelsAreBlack();
+        testGlobalAndSharedImplementationsMatch();
+        testInvalidImageShapeIsRejected();
         std::cout << "Edge-detection tests passed\n";
         return 0;
     }
