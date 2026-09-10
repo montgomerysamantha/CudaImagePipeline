@@ -2,6 +2,7 @@
 #include "core/cuda_check.hpp"
 #include "core/device_image.hpp"
 #include "filters/grayscale.hpp"
+#include "reference/grayscale_cpu.hpp"
 
 #include <exception>
 #include <iostream>
@@ -9,39 +10,13 @@
 
 constexpr int RUNS = 20;
 
-void grayscaleCpu(
-    int width,
-    int height,
-    const unsigned char* input,
-    unsigned char* output)
-{
-    const int pixelCount = width * height;
-
-    for (int pixel = 0; pixel < pixelCount; ++pixel)
-    {
-        const int index = pixel * 3;
-        const int red = input[index];
-        const int green = input[index + 1];
-        const int blue = input[index + 2];
-
-        const unsigned char gray =
-            static_cast<unsigned char>(
-                (299 * red + 587 * green + 114 * blue) / 1000
-            );
-
-        output[index] = gray;
-        output[index + 1] = gray;
-        output[index + 2] = gray;
-    }
-}
-
 void warmUpCpu(benchmark::BenchmarkContext& context)
 {
-    grayscaleCpu(
-        context.input.width,
-        context.input.height,
-        context.input.pixels.data(),
-        context.cpuOutput.pixels.data()
+    const HostImage& readOnlyInput = context.input;
+
+    reference::grayscale(
+        readOnlyInput.view(),
+        context.cpuOutput.view()
     );
 }
 
@@ -76,15 +51,14 @@ int main(int argc, char** argv)
         warmUpGpu(context);
 
         const DeviceImage& readOnlyInput = context.deviceInput;
+        const HostImage& readOnlyHostInput = context.input;
 
         const float cpuAverage =
             benchmark::averageCpu(RUNS, [&]()
         {
-            grayscaleCpu(
-                context.input.width,
-                context.input.height,
-                context.input.pixels.data(),
-                context.cpuOutput.pixels.data()
+            reference::grayscale(
+                readOnlyHostInput.view(),
+                context.cpuOutput.view()
             );
         });
 

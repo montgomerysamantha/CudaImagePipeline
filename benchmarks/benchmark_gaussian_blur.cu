@@ -2,6 +2,7 @@
 #include "core/cuda_check.hpp"
 #include "core/device_image.hpp"
 #include "filters/gaussian_blur.hpp"
+#include "reference/gaussian_blur_cpu.hpp"
 
 #include <exception>
 #include <iostream>
@@ -9,8 +10,7 @@
 
 constexpr int RUNS = 20;
 
-__host__ __device__
-void blurPixel(
+__device__ void blurPixelGlobalMemory(
     int x,
     int y,
     int width,
@@ -80,18 +80,7 @@ __global__ void gaussianBlurGlobalMemoryKernel(
 
     if (x < width && y < height)
     {
-       blurPixel(x, y, width, height, input, output);
-    }
-}
-
-void gaussianBlurCpu(int width, int height, const unsigned char* input, unsigned char* output)
-{
-    for (int y = 0; y < height; y++)
-    {
-        for (int x = 0; x < width; x++)
-        {
-            blurPixel(x, y, width, height, input, output);
-        }
+       blurPixelGlobalMemory(x, y, width, height, input, output);
     }
 }
 
@@ -124,11 +113,11 @@ void warmUpGpu(benchmark::BenchmarkContext& context)
 
 void warmUpCpu(benchmark::BenchmarkContext& context)
 {
-    gaussianBlurCpu(
-        context.input.width,
-        context.input.height,
-        context.input.pixels.data(),
-        context.cpuOutput.pixels.data()
+    const HostImage& readOnlyInput = context.input;
+
+    reference::gaussianBlur(
+        readOnlyInput.view(),
+        context.cpuOutput.view()
     );
 }
 
@@ -150,15 +139,14 @@ int main(int argc, char** argv)
         warmUpGpu(context);
 
         const DeviceImage& readOnlyInput = context.deviceInput;
+        const HostImage& readOnlyHostInput = context.input;
 
         const float cpuAverage =
             benchmark::averageCpu(RUNS, [&]()
         {
-            gaussianBlurCpu(
-                context.input.width,
-                context.input.height,
-                context.input.pixels.data(),
-                context.cpuOutput.pixels.data()
+            reference::gaussianBlur(
+                readOnlyHostInput.view(),
+                context.cpuOutput.view()
             );
         });
 

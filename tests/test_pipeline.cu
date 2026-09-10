@@ -1,3 +1,4 @@
+#include "filters/grayscale.hpp"
 #include "pipeline/image_pipeline.hpp"
 #include "tests/test_utils.hpp"
 
@@ -36,6 +37,32 @@ void testSingleEnabledStageMatchesDirectLauncher()
 {
     // TODO: Enable only grayscale in the pipeline. Compare the pipeline result
     // with a direct call to launchGrayscale using the same input.
+    const HostImage input = test::makeRgbImage(
+        3,
+        2,
+        {
+              1,   2,   3,   4,   5,   6,   7,   8,   9,
+             10,  20,  30,  40,  50,  60,  70,  80,  90
+        }
+    );
+
+    PipelineOptions options;
+    options.grayscale = true;
+    options.gaussianBlur = false;
+    options.edgeDetection = false;
+    options.sharpen = false;
+    options.resize = false;
+
+    ImagePipeline pipeline(options);
+    const HostImage pipelineOutput = pipeline.process(input);
+
+    const HostImage directOutput = test::runFilter(input, launchGrayscale);
+
+    test::requirePixelsEqual(
+        pipelineOutput,
+        directOutput,
+        "testSingleEnabledStageMatchesDirectLauncher"
+    );
 }
 
 void testStageOrdering()
@@ -66,6 +93,7 @@ int main()
     try
     {
         testDisabledStagesPreserveInput();
+        testSingleEnabledStageMatchesDirectLauncher();
         std::cout << "Pipeline tests passed\n";
         return 0;
     }

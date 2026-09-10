@@ -32,6 +32,17 @@ set_target_properties(image_pipeline PROPERTIES
     CUDA_RUNTIME_LIBRARY Shared
 )
 
+add_library(image_references
+    src/reference/grayscale_cpu.cpp
+    src/reference/gaussian_blur_cpu.cpp
+    src/reference/sobel_cpu.cpp
+)
+
+target_include_directories(image_references
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
 add_executable(cuda_image_pipeline src/main.cpp)
 target_link_libraries(cuda_image_pipeline PRIVATE image_pipeline)
 
@@ -42,7 +53,9 @@ add_executable(
 
 target_link_libraries(
     benchmark_gaussian_blur
-    PRIVATE image_pipeline
+    PRIVATE
+        image_pipeline
+        image_references
 )
 
 add_executable(
@@ -52,7 +65,9 @@ add_executable(
 
 target_link_libraries(
     benchmark_grayscale
-    PRIVATE image_pipeline
+    PRIVATE
+        image_pipeline
+        image_references
 )
 
 add_executable(
@@ -62,7 +77,9 @@ add_executable(
 
 target_link_libraries(
     benchmark_sobel
-    PRIVATE image_pipeline
+    PRIVATE
+        image_pipeline
+        image_references
 )
 
 set_target_properties(
@@ -88,7 +105,12 @@ if(BUILD_TESTING)
     )
 
     foreach(test_target IN LISTS cuda_test_targets)
-        target_link_libraries(${test_target} PRIVATE image_pipeline)
+        target_link_libraries(
+            ${test_target}
+            PRIVATE
+                image_pipeline
+                image_references
+        )
         set_target_properties(
             ${test_target}
             PROPERTIES CUDA_RUNTIME_LIBRARY Shared

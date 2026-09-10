@@ -41,6 +41,77 @@ inline HostImage makeRgbImage(
     return image;
 }
 
+struct RgbPixel
+{
+    unsigned char red;
+    unsigned char green;
+    unsigned char blue;
+};
+
+template <typename PixelGenerator>
+HostImage makeGeneratedRgbImage(
+    int width,
+    int height,
+    PixelGenerator generatePixel)
+{
+    require(
+        width > 0 && height > 0,
+        "Generated test image dimensions must be positive"
+    );
+
+    std::vector<unsigned char> pixels(
+        static_cast<std::size_t>(width) * height * 3
+    );
+
+    for (int y = 0; y < height; ++y)
+    {
+        for (int x = 0; x < width; ++x)
+        {
+            const RgbPixel pixel = generatePixel(x, y);
+            const int index = (y * width + x) * 3;
+
+            pixels[index] = pixel.red;
+            pixels[index + 1] = pixel.green;
+            pixels[index + 2] = pixel.blue;
+        }
+    }
+
+    return makeRgbImage(width, height, std::move(pixels));
+}
+
+inline HostImage makeSolidRgbImage(
+    int width,
+    int height,
+    RgbPixel color)
+{
+    return makeGeneratedRgbImage(
+        width,
+        height,
+        [color](int, int)
+        {
+            return color;
+        }
+    );
+}
+
+inline HostImage makeCoordinatePatternImage(
+    int width,
+    int height)
+{
+    return makeGeneratedRgbImage(
+        width,
+        height,
+        [](int x, int y)
+        {
+            return RgbPixel{
+                static_cast<unsigned char>((x * 13 + y * 7) % 256),
+                static_cast<unsigned char>((x * 3 + y * 17) % 256),
+                static_cast<unsigned char>((x * 11 + y * 5) % 256)
+            };
+        }
+    );
+}
+
 class CudaStream
 {
 public:
@@ -108,6 +179,49 @@ inline void requirePixelsEqual(
     require(
         actual.pixels == expected.pixels,
         testName + ": output pixels do not match"
+    );
+}
+
+inline void setRgbPixel(
+    HostImage& image,
+    int x,
+    int y,
+    unsigned char red,
+    unsigned char green,
+    unsigned char blue)
+{
+    require(
+        image.channels == 3,
+        "setRgbPixel expects a three-channel image"
+    );
+
+    require(
+        x >= 0 && x < image.width &&
+        y >= 0 && y < image.height,
+        "setRgbPixel coordinates are outside the image"
+    );
+
+    const int index =
+        (y * image.width + x) * 3;
+
+    image.pixels[index] = red;
+    image.pixels[index + 1] = green;
+    image.pixels[index + 2] = blue;
+}
+
+inline void setGrayscalePixel(
+    HostImage& image,
+    int x,
+    int y,
+    unsigned char value)
+{
+    setRgbPixel(
+        image,
+        x,
+        y,
+        value,
+        value,
+        value
     );
 }
 

@@ -244,10 +244,12 @@ CudaLearning/
 |   |-- core/                  Host/device image types and CUDA checks
 |   |-- filters/               Public filter launchers
 |   |-- pipeline/              Pipeline configuration and interface
+|   |-- reference/             Reusable CPU reference interfaces
 |   `-- tests/                 Lightweight test helpers
 |-- src/
 |   |-- core/                  Image I/O and device-memory ownership
 |   |-- filters/               CUDA kernels and launchers
+|   |-- reference/             Independent CPU reference algorithms
 |   `-- pipeline/              One-upload, one-download orchestration
 |-- benchmarks/                CPU/GPU correctness and timing programs
 |-- tests/                     Executable tests and learning outlines
