@@ -18,6 +18,7 @@ int main(int argc, char** argv)
         PipelineOptions options;
         options.grayscale = true;
         options.gaussianBlur = true;
+        options.edgeDetection = true;
 
         ImagePipeline pipeline(options);
         PipelineTimings timings;

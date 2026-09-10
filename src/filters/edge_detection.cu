@@ -6,6 +6,11 @@
 
 namespace
 {
+constexpr int blockWidth = 16;
+constexpr int blockHeight = 16;
+constexpr int radius = 1;
+constexpr int tileWidth = blockWidth + radius * 2;
+constexpr int tileHeight = blockHeight + radius * 2;
 
 __constant__ int sobelXDevice[3][3] =
 {
@@ -31,6 +36,67 @@ __device__ void writeRgbDevice(
     output[outputIndex + 2] = value;
 }
 
+struct SobelGradients
+{
+    int gx;
+    int gy;
+};
+
+__device__  SobelGradients getGxGyValues(
+    int x,
+    int y,
+    int width,
+    const unsigned char* input)
+{
+    int gx = 0;
+    int gy = 0;
+
+    for (int dy = -1; dy <= 1; ++dy)
+    {
+        for (int dx = -1; dx <= 1; ++dx)
+        {
+            const int neighborX = x + dx;
+            const int neighborY = y + dy;
+
+            const int neighborIndex =
+                (neighborY * width + neighborX) * 3;
+
+            const int gray = input[neighborIndex];
+
+            gx += gray * sobelXDevice[dy + 1][dx + 1];
+            gy += gray * sobelYDevice[dy + 1][dx + 1];
+        }
+    }
+
+    return {gx, gy};
+}
+
+__device__  unsigned char calcEdge(int gx, int gy)
+{
+    const float magnitude =
+        sqrtf(static_cast<float>(
+            gx * gx + gy * gy
+        ));
+
+    const float clampedMagnitude =
+        fminf(255.0f, magnitude);
+
+    return static_cast<unsigned char>(
+        clampedMagnitude
+    );
+}
+
+__device__  bool isBorder(int x, int y, int width, int height)
+{
+    const bool isBorderCoord =
+                x == 0 ||
+                y == 0 ||
+                x == width - 1 ||
+                y == height - 1;
+
+    return isBorderCoord;
+}
+
 __global__ void sobelKernel(
     int width,
     int height,
@@ -44,17 +110,67 @@ __global__ void sobelKernel(
         return;
     }
 
+    const int outputIndex =
+        (y * width + x) * 3;
+
+    if (isBorder(x, y, width, height))
+    {
+        writeRgbDevice(0, output, outputIndex);
+        return;
+    }
+
+    const SobelGradients gradients =
+        getGxGyValues(
+            x,
+            y,
+            width,
+            input
+        );
+
+    const unsigned char edge =
+        calcEdge(gradients.gx, gradients.gy);
+
+    writeRgbDevice(edge, output, outputIndex);
+}
+
+void validateRgbPair(
+    ConstImageView input,
+    ImageView output)
+{
+    const bool invalidPointers =
+        input.data == nullptr ||
+        output.data == nullptr;
+
+    const bool differentDimensions =
+        input.width != output.width ||
+        input.height != output.height;
+
+    const bool invalidChannels =
+        input.channels != 3 ||
+        output.channels != 3;
+
+    if (invalidPointers ||
+        differentDimensions ||
+        invalidChannels)
+    {
+        throw std::invalid_argument(
+            "Edge detection expects equally sized "
+            "RGB input and output images"
+        );
+    }
 }
 
 }
 void launchEdgeDetection(ConstImageView input, ImageView output, cudaStream_t stream)
 {
-    (void)input;
-    (void)output;
-    (void)stream;
+    validateRgbPair(input, output);
+    constexpr dim3 threads(blockWidth, blockHeight);
+    const dim3 blocks(
+        (input.width + threads.x - 1) / threads.x,
+        (input.height + threads.y - 1) / threads.y);
 
-    // TODO: Add a Sobel kernel here. Read only from input and write only to output,
-    // then check the launch with CUDA_CHECK(cudaGetLastError()).
-    throw std::logic_error("Edge detection is a template and has not been implemented yet");
+    sobelKernel<<<blocks, threads, 0, stream>>>(
+        input.width, input.height, input.data, output.data);
+    CUDA_CHECK(cudaGetLastError());
 }
 

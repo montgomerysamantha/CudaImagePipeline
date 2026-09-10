@@ -8,7 +8,7 @@ HostImage runFullPipelineExample(const HostImage& input)
     PipelineOptions options;
     options.grayscale = true;
     options.gaussianBlur = true;
-    options.edgeDetection = false;
+    options.edgeDetection = true;
     options.sharpen = false;
     options.resize = false;
     return ImagePipeline(options).process(input);

@@ -81,7 +81,7 @@ __global__ void gaussianBlurKernel(
     const int outputIndex = (y * width + x) * 3;
     for (int channel = 0; channel < 3; ++channel)
     {
-        output[outputIndex + channel] = static_cast<unsigned char>(sums[channel] / weightSum);
+        output[channel] = static_cast<unsigned char>(sums[channel] / weightSum);
     }
 }
 
