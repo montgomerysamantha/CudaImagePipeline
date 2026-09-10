@@ -111,6 +111,8 @@ need to read.
   and benchmark (not yet a stage in `PipelineOptions`)
   - Fixed 21x20 aperture with 282 open samples and anchor (column 10, row 8)
   - One GPU thread per output pixel; aperture stored in CUDA constant memory
+  - Shared-memory production kernel with a 36x35 halo tile and 16x16 threads
+  - Global-memory comparison launcher retained for benchmarking
   - Inclusive luminance threshold and configurable intensity in [0,1]
   - Matching CPU/GPU rounding, border clipping, and saturation
 - CPU reference implementations for correctness and performance comparisons
@@ -150,6 +152,10 @@ with CUDA 12.9. Each measurement is the average of 20 runs over a 1960x1960 RGB
 image (10.991 MiB). CPU references are single-threaded. All compared CPU and GPU
 outputs matched exactly.
 
+Grayscale/Gaussian/Sobel rows retain their earlier measurements. The bokeh row
+is a fresh 20-run measurement on the same GPU and 1960x1960 lena.jpg, threshold
+200 and intensity 0.05, using the shared-memory production launcher.
+
 ### End-to-end summary
 
 | Filter | CPU reference | Production GPU kernel | Compute speedup | GPU end-to-end | End-to-end speedup |
@@ -157,6 +163,7 @@ outputs matched exactly.
 | Grayscale | 3.900 ms | 0.433 ms | 9.003x | 9.274 ms | 0.421x |
 | Gaussian blur | 59.178 ms | 0.861 ms | 68.771x | 9.888 ms | 5.985x |
 | Sobel edges | 28.501 ms | 0.625 ms | 45.588x | 10.032 ms | 2.841x |
+| Heart bokeh | 2036.950 ms | 9.669 ms | 210.658x | 17.918 ms | 113.679x |
 
 “Compute speedup” compares only the algorithm running on the CPU or GPU.
 “End-to-end” includes upload, kernel execution, download, and synchronization.
@@ -169,6 +176,7 @@ isolation but slower once transfers are included.
 |---|---:|---:|---|
 | Gaussian blur | 1.270 ms | 0.861 ms | Shared memory was 1.476x faster |
 | Sobel edges | 0.625 ms | 0.681 ms | Global memory was about 1.09x faster |
+| Heart bokeh | 27.890 ms | 9.669 ms | Shared memory was 2.884x faster |
 
 Shared memory is an optimization tool, not a guaranteed speedup. Gaussian blur
 reuses three color channels across neighboring threads, so cooperative tile
@@ -180,6 +188,10 @@ The benchmark result therefore drives the production choice: Gaussian blur uses
 the shared-memory implementation, while Sobel uses the global-memory version.
 The slower Sobel implementation remains available as a documented experiment.
 
+Bokeh now uses shared memory as well: overlapping source reads and repeated
+luminance checks are replaced by cooperative tile loading and thresholding.
+Its global-memory launcher remains available for comparison.
+
 ### Where GPU time goes
 
 | Filter | Upload | Kernel | Download | Transfer share of measured components |
@@ -187,6 +199,7 @@ The slower Sobel implementation remains available as a documented experiment.
 | Grayscale | 4.492 ms | 0.433 ms | 4.305 ms | 95.307% |
 | Gaussian blur | 4.503 ms | 0.861 ms | 4.275 ms | 91.072% |
 | Sobel edges | 4.668 ms | 0.625 ms | 4.280 ms | 93.469% |
+| Heart bokeh | 4.590 ms | 9.669 ms | 4.279 ms | 47.839% |
 
 The key takeaway is not merely that GPU kernels are fast. It is that a useful
 GPU design must minimize data movement. Combining stages lets the pipeline pay
@@ -205,24 +218,19 @@ after CPU/GPU warm-up. Intensity is 0.05 throughout. CPU timing uses
 kernel, download and synchronization using reusable buffers. Allocation, image
 loading and PNG writing are excluded. All measured outputs match byte-for-byte.
 
-| Input | Dimensions | Threshold | CPU ms | GPU kernel ms | GPU end-to-end ms | Compute speedup |
-|---|---:|---:|---:|---:|---:|---:|
-| Synthetic lights | 480x270 | 200 | 65.491 | 1.196 | 1.681 | 54.8x |
-| stars.jpg | 755x426 | 200 | 166.054 | 3.474 | 4.202 | 47.8x |
-| kodim01.png | 768x512 | 200 | 202.917 | 3.027 | 4.315 | 67.0x |
-| stars.jpg | 755x426 | 0 | 187.810 | 2.469 | 3.641 | 76.1x |
-| stars.jpg | 755x426 | 255 | 162.679 | 2.772 | 3.576 | 58.7x |
-| lena.jpg | 1960x1960 | 200 | 2000.360 | 30.470 | 38.512 | 65.6x |
+| Input | Dimensions | Threshold | CPU ms | Global ms | Shared ms | Shared end-to-end ms | Global/shared |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Synthetic lights | 480x270 | 200 | 65.314 | 0.955 | 0.340 | 0.759 | 2.813x |
+| stars.jpg | 755x426 | 200 | 164.819 | 2.436 | 0.831 | 1.716 | 2.933x |
+| kodim01.png | 768x512 | 200 | 206.752 | 3.518 | 1.040 | 2.133 | 3.381x |
+| stars.jpg | 755x426 | 0 | 182.027 | 2.000 | 0.744 | 1.629 | 2.687x |
+| stars.jpg | 755x426 | 255 | 167.940 | 2.536 | 0.837 | 1.780 | 3.031x |
+| lena.jpg | 1960x1960 | 200 | 2036.950 | 27.890 | 9.669 | 17.918 | 2.884x |
 
-These are workload observations, not isolated causal experiments or confidence
-intervals. Clock changes, system load and content can affect timings. The older
-grayscale/Gaussian/Sobel tables above are historical measurements, not fresh runs
-from this sweep.
-
-A separate 20-run repeat of stars at threshold 200 measured 170.789 ms CPU,
-2.985 ms GPU and 4.082 ms GPU end-to-end, versus 3.474 ms GPU in the initial
-batch. Treat small timing differences cautiously. Additional exploratory repeats
-overlapped a background CPU benchmark and are excluded from the reported table.
+This sweep replaces the earlier bokeh results. Each variant was warmed up;
+global timing precedes shared timing. These are averages, not confidence
+intervals or a block-size sweep. Clocks, caches and background load can affect
+results; the speedup is consistent across the tested workloads.
 
 Findings:
 
@@ -237,25 +245,27 @@ Findings:
 - The new near-square aperture replaces the earlier 29x14 ASCII-derived mask,
   whose proportions looked flattened when interpreted as square pixels.
 
-### Would shared memory help bokeh?
+### Shared-memory bokeh design
 
-It is a promising next experiment, but no shared-memory bokeh kernel has been
-implemented or measured yet. This is an inference from the current access pattern:
-each 16x16 block can inspect 256 x 282 = 72,192 source pixels, with substantial
-overlap between neighboring threads. A bounding tile is only 36x35 RGB pixels
-(3,780 bytes with byte storage). Because gathering subtracts aperture offsets,
-the halo is 10 pixels left/right, 11 above, and 8 below.
+The production launcher now uses a 16x16 block (256 threads) with a 36x35
+source tile. Halo widths are 10 left/right, 11 above and 8 below, matching the
+asymmetric aperture and subtraction used for gathering. Each shared entry is a
+32-bit packed RGB value, so the tile consumes 5,040 bytes per block.
 
-Cooperatively loading that tile could reduce repeated global reads and allow
-luminance/thresholding once per tile sample. The logical reuse is about 57x;
-that is **not** a predicted speedup because caches already serve repeated reads.
-Shared-memory accesses, synchronization, border loading, register pressure and
-occupancy may offset the savings. Keep all threads participating in tile loading
-and synchronization before returning threads outside the image.
+Threads cooperatively load the tile and compute luminance/threshold once per
+sample. Rejected samples and out-of-image entries become zero. All threads
+synchronize before out-of-image output threads return, making partial blocks
+safe. The gather loop then reads shared packed values and accumulates integer
+RGB sums; rounding and compositing are unchanged.
 
-Compare a tiled variant with this baseline on sparse stars, dense bright images,
-and multiple sizes/thresholds. Require exact CPU agreement and measure both kernel
-and end-to-end time before selecting the production version.
+16x16 is a conservative choice balancing halo overhead and block size. It is
+not claimed to be optimal: 32x8 and other shapes have not been benchmarked.
+The comparison measures both tiling and moving threshold work to tile loading,
+rather than isolating shared-memory storage alone. The global launcher remains
+available as a baseline.
+
+Tests run the global, shared and default launchers against the CPU reference.
+Compute Sanitizer memcheck also reports zero errors on the bokeh GPU tests.
 
 ## Build
 
@@ -301,8 +311,7 @@ Each benchmark:
 1. Loads and validates the image.
 2. Performs untimed input preparation when required.
 3. Warms up the CPU and GPU implementations.
-4. Measures CPU, kernel-only, and end-to-end time (the original three also report
-   upload and download separately).
+4. Measures CPU, kernel-only, upload, download and end-to-end time.
 5. Compares CPU and GPU output byte-for-byte.
 6. Saves both results under `output/` for visual inspection.
 
@@ -378,7 +387,7 @@ CudaLearning/
 ## Next steps
 
 - Integrate heart bokeh into `PipelineOptions` and test stage ordering
-- Benchmark a shared-memory bokeh variant against the current global-read kernel
+- Explore alternative bokeh block shapes and profile occupancy/cache behavior
 
 - Add tests alongside the sharpen and resize implementations
 - Add nearest-neighbor and bilinear resize

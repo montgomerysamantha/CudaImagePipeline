@@ -8,10 +8,13 @@ void compare(const HostImage& input, unsigned char threshold, float intensity)
 {
     HostImage expected = input;
     reference::heartBokeh(input.view(), expected.view(), threshold, intensity);
+    for (auto launch : {launchHeartBokehGlobal, launchHeartBokehShared, launchHeartBokeh})
+    {
     const auto actual = test::runFilter(input,
         [=](ConstImageView source, ImageView destination, cudaStream_t stream)
-        { launchHeartBokeh(source, destination, threshold, intensity, stream); });
+        { launch(source, destination, threshold, intensity, stream); });
     test::requirePixelsEqual(actual, expected, "CPU/GPU bokeh agreement");
+    }
 }
 
 int main()
@@ -43,8 +46,14 @@ int main()
             bool cpu = false, gpu = false;
             try { reference::heartBokeh(a,b,200,intensity); }
             catch (const std::invalid_argument&) { cpu = true; }
-            try { launchHeartBokeh(a,b,200,intensity,nullptr); }
-            catch (const std::invalid_argument&) { gpu = true; }
+            gpu = true;
+            for (auto launch : {launchHeartBokehGlobal, launchHeartBokehShared, launchHeartBokeh})
+            {
+                bool rejected = false;
+                try { launch(a,b,200,intensity,nullptr); }
+                catch (const std::invalid_argument&) { rejected = true; }
+                gpu = gpu && rejected;
+            }
             test::require(cpu && gpu, "Invalid argument must be rejected on CPU and GPU");
         };
         auto bad = source.view(); bad.data = nullptr; reject(bad,output.view(),1);

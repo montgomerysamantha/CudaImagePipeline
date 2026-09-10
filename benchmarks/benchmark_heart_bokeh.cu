@@ -73,13 +73,24 @@ int main(int argc, char** argv)
         const auto launcher = [&](ConstImageView a, ImageView b, cudaStream_t stream)
         { launchHeartBokeh(a,b,static_cast<unsigned char>(threshold),intensity,stream); };
         const DeviceImage& deviceInput = context.deviceInput;
+        const auto globalRun = [&]()
+        { launchHeartBokehGlobal(deviceInput.view(),context.deviceOutput.view(),
+              static_cast<unsigned char>(threshold),intensity,context.stream); };
+        globalRun();
+        CUDA_CHECK(cudaStreamSynchronize(context.stream));
+        const float globalMs = benchmark::averageCuda(runs,context.stream,globalRun);
+        context.deviceOutput.downloadAsync(context.gpuOutput.view(),context.stream);
+        CUDA_CHECK(cudaStreamSynchronize(context.stream));
+        const bool globalMatch = output.pixels == context.gpuOutput.pixels;
         const auto gpuRun = [&]()
         { launcher(deviceInput.view(),context.deviceOutput.view(),context.stream); };
         gpuRun();
         CUDA_CHECK(cudaStreamSynchronize(context.stream));
         const float gpuMs = benchmark::averageCuda(runs,context.stream,gpuRun);
         const float endToEndMs = benchmark::averageGpuEndToEnd(runs,context,launcher);
-        const bool match = output.pixels == context.gpuOutput.pixels;
+        const bool match = globalMatch && output.pixels == context.gpuOutput.pixels;
+        const float uploadMs = benchmark::averageUpload(runs,context);
+        const float downloadMs = benchmark::averageDownload(runs,context);
         const std::string stem = source == "--demo" ? "heart_bokeh_demo" : source;
         const auto inputPath = benchmark::makeOutputPath(stem, "_bokeh_input");
         const auto outputPath = benchmark::makeOutputPath(stem, "_bokeh_cpu");
@@ -91,6 +102,9 @@ int main(int argc, char** argv)
                   << input.width << " x " << input.height << " RGB; threshold="
                   << threshold << "; intensity=" << intensity << "; runs=" << runs
                   << "\nCPU compute average: " << average << " ms\n"
+                  << "GPU global average: " << globalMs << " ms\n"
+                  << "Global/shared speedup: " << globalMs / gpuMs << "x\n"
+                  << "Upload: " << uploadMs << " ms; Download: " << downloadMs << " ms\n"
                   << "GPU compute average: " << gpuMs << " ms\n"
                   << "GPU end-to-end: " << endToEndMs << " ms\n"
                   << "Compute speedup: " << average / gpuMs << "x\n"

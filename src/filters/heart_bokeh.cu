@@ -71,10 +71,61 @@ __global__ void heartBokehKernel(ConstImageView input, ImageView output,
     }
 }
 
+// 256 threads cooperatively load a 36x35 halo tile (5,040 bytes).
+// Pack RGB into one 32-bit word and threshold once per source sample.
+__global__ void heartBokehSharedKernel(ConstImageView input, ImageView output,
+    unsigned char threshold, float intensity)
+{
+    __shared__ unsigned int tile[35][36];
+    const int thread = threadIdx.y * 16 + threadIdx.x;
+    for (int cell = thread; cell < 35 * 36; cell += 256)
+    {
+        const int y = cell / 36;
+        const int x = cell % 36;
+        const int sourceRow = blockIdx.y * 16 + y - 11;
+        const int sourceColumn = blockIdx.x * 16 + x - 10;
+        unsigned int packed = 0;
+        if (sourceRow >= 0 && sourceRow < input.height &&
+            sourceColumn >= 0 && sourceColumn < input.width)
+        {
+            const std::size_t index =
+                (static_cast<std::size_t>(sourceRow) * input.width + sourceColumn) * 3;
+            const unsigned int r = input.data[index];
+            const unsigned int g = input.data[index+1];
+            const unsigned int b = input.data[index+2];
+            if ((77*r + 150*g + 29*b + 128)/256 >= threshold)
+                packed = r | (g << 8) | (b << 16);
+        }
+        tile[y][x] = packed;
+    }
+    // Partial blocks must also participate before any thread returns.
+    __syncthreads();
+    const int column = blockIdx.x * 16 + threadIdx.x;
+    const int row = blockIdx.y * 16 + threadIdx.y;
+    if (column >= input.width || row >= input.height) return;
+    int sums[3] = {0,0,0};
+    for (int y = 0; y < 20; ++y)
+        for (int x = 0; x < 21; ++x)
+        {
+            if (aperture[y][x] != '#') continue;
+            const unsigned int sample = tile[threadIdx.y + 19 - y][threadIdx.x + 20 - x];
+            sums[0] += sample & 255;
+            sums[1] += (sample >> 8) & 255;
+            sums[2] += (sample >> 16) & 255;
+        }
+    const std::size_t index = (static_cast<std::size_t>(row) * input.width + column) * 3;
+    for (int channel = 0; channel < 3; ++channel)
+    {
+        const int scaled = static_cast<int>(roundf(sums[channel] * intensity));
+        output.data[index+channel] =
+            static_cast<unsigned char>(min(255, input.data[index+channel] + scaled));
+    }
+}
+
 } // namespace
 
-void launchHeartBokeh(ConstImageView input, ImageView output,
-    unsigned char brightnessThreshold, float intensity, cudaStream_t stream)
+static void launchBokeh(ConstImageView input, ImageView output,
+    unsigned char brightnessThreshold, float intensity, cudaStream_t stream, bool shared)
 {
     if (!input.data || !output.data || input.width <= 0 || input.height <= 0 ||
         input.width != output.width || input.height != output.height ||
@@ -88,7 +139,20 @@ void launchHeartBokeh(ConstImageView input, ImageView output,
         throw std::invalid_argument("Heart bokeh requires non-overlapping buffers");
     const dim3 threads(16, 16);
     const dim3 blocks((input.width - 1) / 16 + 1, (input.height - 1) / 16 + 1);
-    heartBokehKernel<<<blocks, threads, 0, stream>>>(
-        input, output, brightnessThreshold, intensity);
+    if (shared)
+        heartBokehSharedKernel<<<blocks, threads, 0, stream>>>(
+            input, output, brightnessThreshold, intensity);
+    else
+        heartBokehKernel<<<blocks, threads, 0, stream>>>(
+            input, output, brightnessThreshold, intensity);
     CUDA_CHECK(cudaGetLastError());
 }
+
+void launchHeartBokehGlobal(ConstImageView a, ImageView b, unsigned char t, float i, cudaStream_t s)
+{ launchBokeh(a,b,t,i,s,false); }
+
+void launchHeartBokehShared(ConstImageView a, ImageView b, unsigned char t, float i, cudaStream_t s)
+{ launchBokeh(a,b,t,i,s,true); }
+
+void launchHeartBokeh(ConstImageView a, ImageView b, unsigned char t, float i, cudaStream_t s)
+{ launchHeartBokehShared(a,b,t,i,s); }
