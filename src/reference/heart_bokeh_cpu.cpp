@@ -10,34 +10,32 @@ namespace
 {
 
 // A '#' marks an open aperture sample and a '.' marks a blocked sample.
+constexpr int rgbChannels = 3;
+constexpr int maximumChannel = 255;
+constexpr int redWeight = 77;
+constexpr int greenWeight = 150;
+constexpr int blueWeight = 29;
+constexpr int luminanceDivisor = 256;
+constexpr int luminanceRounding = luminanceDivisor / 2;
+
+std::size_t pixelIndex(int row, int column, int width)
+{
+    return (static_cast<std::size_t>(row) * width + column) * rgbChannels;
+}
+
 constexpr int apertureWidth = 21;
 constexpr int apertureHeight = 20;
 
 // Each row has apertureWidth visible characters plus its terminating null
 // character. Access a position with heartAperture[row][column].
-constexpr char heartAperture[apertureHeight][apertureWidth + 1] =
-{
-    "....####.....####....",
-    "..########.########..",
-    ".#########.#########.",
-    "##########.##########",
-    "#####################",
-    "#####################",
-    "#####################",
-    "#####################",
-    ".###################.",
-    ".###################.",
-    "..#################..",
-    "..#################..",
-    "...###############...",
-    "....#############....",
-    ".....###########.....",
-    "......#########......",
-    ".......#######.......",
-    "........#####........",
-    ".........###.........",
-    "..........#.........."
-};
+constexpr char heartAperture[apertureHeight][apertureWidth + 1] = {
+    "....####.....####....", "..########.########..", ".#########.#########.",
+    "##########.##########", "#####################", "#####################",
+    "#####################", "#####################", ".###################.",
+    ".###################.", "..#################..", "..#################..",
+    "...###############...", "....#############....", ".....###########.....",
+    "......#########......", ".......#######.......", "........#####........",
+    ".........###.........", "..........#.........."};
 
 struct ApertureCoordinate
 {
@@ -51,26 +49,24 @@ ApertureCoordinate calcHeartCenter()
     int columnSum = 0;
     int rowSum = 0;
 
-    for (int row = 0; row < apertureHeight; ++row)
+    for (int row = 0; row < apertureHeight; row++)
     {
-        for (int column = 0; column < apertureWidth; ++column)
+        for (int column = 0; column < apertureWidth; column++)
         {
             if (heartAperture[row][column] == '#')
             {
                 columnSum += column;
                 rowSum += row;
-                ++openCellCount;
+                openCellCount++;
             }
         }
     }
 
     const int anchorColumn =
-        static_cast<int>(std::round(
-            static_cast<double>(columnSum) / openCellCount));
+        static_cast<int>(std::round(static_cast<double>(columnSum) / openCellCount));
 
     const int anchorRow =
-        static_cast<int>(std::round(
-            static_cast<double>(rowSum) / openCellCount));
+        static_cast<int>(std::round(static_cast<double>(rowSum) / openCellCount));
 
     return {anchorRow, anchorColumn};
 }
@@ -93,8 +89,8 @@ bool apertureContains(int offsetColumn, int offsetRow)
     constexpr int width = static_cast<int>(std::size(heartAperture[0])) - 1;
     const ApertureCoordinate position = calcRowCol(offsetColumn, offsetRow);
 
-    if (position.row < 0 || position.row >= height ||
-        position.column < 0 || position.column >= width)
+    if (position.row < 0 || position.row >= height || position.column < 0 ||
+        position.column >= width)
     {
         return false;
     }
@@ -104,32 +100,25 @@ bool apertureContains(int offsetColumn, int offsetRow)
 
 // Validate that input and output are non-null, equally sized RGB images.
 // Validate intensity is within supported range.
-void validateArguments(
-    ConstImageView input,
-    ImageView output,
-    float intensity)
+void validateArguments(ConstImageView input, ImageView output, float intensity)
 {
-    if (input.data == nullptr || output.data == nullptr ||
-        input.width <= 0 || input.height <= 0 ||
-        input.width != output.width ||
-        input.height != output.height ||
-        input.channels != 3 || output.channels != 3)
+    if (input.data == nullptr || output.data == nullptr || input.width <= 0 ||
+        input.height <= 0 || input.width != output.width ||
+        input.height != output.height || input.channels != rgbChannels ||
+        output.channels != rgbChannels)
     {
-        throw std::invalid_argument(
-            "Heart-shaped bokeh filter expects equally sized RGB input and output images"
-        );
+        throw std::invalid_argument("Heart-shaped bokeh filter expects equally sized RGB "
+                                    "input and output images");
     }
 
-    if (!std::isfinite(intensity) ||
-        intensity < 0.0f || intensity > 1.0f)
+    if (!std::isfinite(intensity) || intensity < 0.0f || intensity > 1.0f)
     {
         throw std::invalid_argument(
-            "Heart-shaped bokeh filter expects intensity between 0.0 and 1.0"
-        );
+            "Heart-shaped bokeh filter expects intensity between 0.0 and 1.0");
     }
 
     // std::less provides a total order even for pointers to separate allocations.
-    const auto less = std::less<const unsigned char*>{};
+    const auto less = std::less<const unsigned char *>{};
     if (less(input.data, output.data + output.bytes()) &&
         less(output.data, input.data + input.bytes()))
     {
@@ -138,36 +127,26 @@ void validateArguments(
 }
 
 // Calculate a pixel's luminance for comparison with brightnessThreshold.
-unsigned char calcLuminance(
-    unsigned char red,
-    unsigned char green,
-    unsigned char blue)
+unsigned char calcLuminance(unsigned char red, unsigned char green, unsigned char blue)
 {
     const int pixelLuminance =
-        (77 * red +
-         150 * green +
-         29 * blue +
-         128) / 256;
+        (redWeight * red + greenWeight * green + blueWeight * blue + luminanceRounding) /
+        luminanceDivisor;
 
     return static_cast<unsigned char>(pixelLuminance);
 }
 
 // Gather bright neighbors and add their light to the original pixel.
-void processPixel(
-    int outputColumn,
-    int outputRow,
-    ConstImageView input,
-    ImageView output,
-    unsigned char brightnessThreshold,
-    float intensity)
+void processPixel(int outputColumn, int outputRow, ConstImageView input, ImageView output,
+                  unsigned char brightnessThreshold, float intensity)
 {
     int redSum = 0;
     int greenSum = 0;
     int blueSum = 0;
 
-    for (int row = 0; row < apertureHeight; ++row)
+    for (int row = 0; row < apertureHeight; row++)
     {
-        for (int column = 0; column < apertureWidth; ++column)
+        for (int column = 0; column < apertureWidth; column++)
         {
             if (heartAperture[row][column] == '.')
             {
@@ -180,14 +159,14 @@ void processPixel(
             const int sourceColumn = outputColumn - offsetColumn;
             const int sourceRow = outputRow - offsetRow;
 
-            if (sourceRow < 0 || sourceRow >= input.height ||
-                sourceColumn < 0 || sourceColumn >= input.width)
+            if (sourceRow < 0 || sourceRow >= input.height || sourceColumn < 0 ||
+                sourceColumn >= input.width)
             {
                 continue;
             }
 
             const std::size_t sourceIndex =
-                (static_cast<std::size_t>(sourceRow) * input.width + sourceColumn) * input.channels;
+                pixelIndex(sourceRow, sourceColumn, input.width);
 
             const unsigned char red = input.data[sourceIndex];
             const unsigned char green = input.data[sourceIndex + 1];
@@ -206,25 +185,20 @@ void processPixel(
         }
     }
 
-    const std::size_t outputIndex =
-        (static_cast<std::size_t>(outputRow) * output.width + outputColumn) * output.channels;
+    const std::size_t outputIndex = pixelIndex(outputRow, outputColumn, output.width);
 
-    const auto compositeChannel = [intensity](
-        unsigned char original,
-        int accumulatedLight)
-    {
+    const auto compositeChannel = [intensity](unsigned char original,
+                                              int accumulatedLight) {
         const int scaledLight = static_cast<int>(
             std::round(static_cast<float>(accumulatedLight) * intensity));
         const int combined = static_cast<int>(original) + scaledLight;
-        return static_cast<unsigned char>(std::min(combined, 255));
+        return static_cast<unsigned char>(std::min(combined, maximumChannel));
     };
 
-    output.data[outputIndex] = compositeChannel(
-        input.data[outputIndex], redSum);
-    output.data[outputIndex + 1] = compositeChannel(
-        input.data[outputIndex + 1], greenSum);
-    output.data[outputIndex + 2] = compositeChannel(
-        input.data[outputIndex + 2], blueSum);
+    output.data[outputIndex] = compositeChannel(input.data[outputIndex], redSum);
+    output.data[outputIndex + 1] =
+        compositeChannel(input.data[outputIndex + 1], greenSum);
+    output.data[outputIndex + 2] = compositeChannel(input.data[outputIndex + 2], blueSum);
 }
 
 } // namespace
@@ -232,18 +206,18 @@ void processPixel(
 namespace reference
 {
 
-void heartBokeh(ConstImageView input, ImageView output, unsigned char brightnessThreshold, float intensity)
+void heartBokeh(ConstImageView input, ImageView output, unsigned char brightnessThreshold,
+                float intensity)
 {
     validateArguments(input, output, intensity);
 
-    for (int row = 0; row < output.height; ++row)
+    for (int row = 0; row < output.height; row++)
     {
-        for (int column = 0; column < output.width; ++column)
+        for (int column = 0; column < output.width; column++)
         {
             processPixel(column, row, input, output, brightnessThreshold, intensity);
         }
     }
-
 }
 
 } // namespace reference
