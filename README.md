@@ -22,22 +22,47 @@ source image for an easy visual comparison.
 
 <table>
   <tr>
-    <th>Original</th>
-    <th>Grayscale</th>
+    <th>Before grayscale</th>
+    <th>After grayscale: color removed</th>
   </tr>
   <tr>
     <td><img src="assets/kodim01.png" alt="Original color image" width="420"></td>
     <td><img src="docs/images/kodim01-grayscale.png" alt="CUDA grayscale output" width="420"></td>
   </tr>
   <tr>
-    <th>Gaussian blur</th>
-    <th>Sobel edges</th>
+    <th>Before Gaussian blur</th>
+    <th>After Gaussian blur: fine texture softened</th>
   </tr>
   <tr>
-    <td><img src="docs/images/kodim01-gaussian-blur.png" alt="CUDA Gaussian blur output" width="420"></td>
-    <td><img src="docs/images/kodim01-sobel.png" alt="CUDA Sobel edge-detection output" width="420"></td>
+    <td><img src="docs/images/gaussian-detail-before.png" alt="Original brick detail enlarged four times" width="480"></td>
+    <td><img src="docs/images/gaussian-detail-after.png" alt="Same brick detail after one Gaussian pass enlarged four times" width="480"></td>
+  </tr>
+  <tr>
+    <th>Before Sobel</th>
+    <th>After Sobel: intensity edges highlighted</th>
+  </tr>
+  <tr>
+    <td><img src="assets/kodim01.png" alt="Original before grayscale preparation and Sobel" width="420"></td>
+    <td><img src="docs/images/kodim01-sobel.png" alt="CUDA Sobel edges" width="420"></td>
+  </tr>
+  <tr>
+    <th>Before heart bokeh</th>
+    <th>After heart bokeh: stars spread into hearts</th>
+  </tr>
+  <tr>
+    <td><img src="docs/images/stars-original.png" alt="Original stars" width="520"></td>
+    <td><img src="docs/images/stars-heart-bokeh.png" alt="Stars with 21x20 heart bokeh" width="520"></td>
   </tr>
 </table>
+
+The Gaussian comparison shows the same 120x80 brick crop at 4x nearest-neighbor
+magnification, making the texture change visible without adding smoothing.
+It is one pass of the actual 3x3 filter.
+[Full original](assets/kodim01.png) and
+[full blur output](docs/images/kodim01-gaussian-blur.png) are also available.
+Sobel includes grayscale preparation. Bokeh uses threshold 200 and intensity
+0.05; CPU and GPU outputs match exactly. Sharpen and resize have no gallery
+entries because they are not implemented.
 
 ## Why use a pipeline?
 
@@ -82,6 +107,12 @@ need to read.
 - 3x3 Sobel edge detection
   - Global-memory production kernel
   - Shared-memory experimental kernel
+- Heart-shaped bokeh, available through a standalone CPU function, CUDA launcher,
+  and benchmark (not yet a stage in `PipelineOptions`)
+  - Fixed 21x20 aperture with 282 open samples and anchor (column 10, row 8)
+  - One GPU thread per output pixel; aperture stored in CUDA constant memory
+  - Inclusive luminance threshold and configurable intensity in [0,1]
+  - Matching CPU/GPU rounding, border clipping, and saturation
 - CPU reference implementations for correctness and performance comparisons
 - Reusable CUDA-event and CPU timing helpers
 - Automatic grayscale preparation for Sobel benchmark inputs
@@ -165,6 +196,67 @@ Results vary by GPU, CPU, image dimensions, compiler, clock behavior, and system
 load. The benchmark executables accept any supported image so results can be
 reproduced on another system.
 
+### Heart bokeh measurements
+
+Fresh measurements on an Intel Core i7-10700KF and NVIDIA GTX 1060 3GB,
+driver 576.57, CUDA 12.9, Release build. Each row averages 20 timed runs
+after CPU/GPU warm-up. Intensity is 0.05 throughout. CPU timing uses
+`steady_clock`; GPU compute uses CUDA events. GPU end-to-end includes upload,
+kernel, download and synchronization using reusable buffers. Allocation, image
+loading and PNG writing are excluded. All measured outputs match byte-for-byte.
+
+| Input | Dimensions | Threshold | CPU ms | GPU kernel ms | GPU end-to-end ms | Compute speedup |
+|---|---:|---:|---:|---:|---:|---:|
+| Synthetic lights | 480x270 | 200 | 65.491 | 1.196 | 1.681 | 54.8x |
+| stars.jpg | 755x426 | 200 | 166.054 | 3.474 | 4.202 | 47.8x |
+| kodim01.png | 768x512 | 200 | 202.917 | 3.027 | 4.315 | 67.0x |
+| stars.jpg | 755x426 | 0 | 187.810 | 2.469 | 3.641 | 76.1x |
+| stars.jpg | 755x426 | 255 | 162.679 | 2.772 | 3.576 | 58.7x |
+| lena.jpg | 1960x1960 | 200 | 2000.360 | 30.470 | 38.512 | 65.6x |
+
+These are workload observations, not isolated causal experiments or confidence
+intervals. Clock changes, system load and content can affect timings. The older
+grayscale/Gaussian/Sobel tables above are historical measurements, not fresh runs
+from this sweep.
+
+A separate 20-run repeat of stars at threshold 200 measured 170.789 ms CPU,
+2.985 ms GPU and 4.082 ms GPU end-to-end, versus 3.474 ms GPU in the initial
+batch. Treat small timing differences cautiously. Additional exploratory repeats
+overlapped a background CPU benchmark and are excluded from the reported table.
+
+Findings:
+
+- Bokeh does substantially more work per pixel than the existing 3x3 filters.
+  The measured GPU advantage persists after transfers.
+- A higher threshold does not eliminate neighborhood reads: RGB and luminance
+  must be obtained before rejecting a sample. On stars, threshold 0 was faster
+  on the GPU than 200. More uniform branch behavior is one possible explanation;
+  profiling is needed to separate it from clock/cache effects.
+- This is an additive 2D effect, not depth of field. Large bright regions can
+  saturate, and the original star remains at the center of the heart.
+- The new near-square aperture replaces the earlier 29x14 ASCII-derived mask,
+  whose proportions looked flattened when interpreted as square pixels.
+
+### Would shared memory help bokeh?
+
+It is a promising next experiment, but no shared-memory bokeh kernel has been
+implemented or measured yet. This is an inference from the current access pattern:
+each 16x16 block can inspect 256 x 282 = 72,192 source pixels, with substantial
+overlap between neighboring threads. A bounding tile is only 36x35 RGB pixels
+(3,780 bytes with byte storage). Because gathering subtracts aperture offsets,
+the halo is 10 pixels left/right, 11 above, and 8 below.
+
+Cooperatively loading that tile could reduce repeated global reads and allow
+luminance/thresholding once per tile sample. The logical reuse is about 57x;
+that is **not** a predicted speedup because caches already serve repeated reads.
+Shared-memory accesses, synchronization, border loading, register pressure and
+occupancy may offset the savings. Keep all threads participating in tile loading
+and synchronization before returning threads outside the image.
+
+Compare a tiled variant with this baseline on sparse stars, dense bright images,
+and multiple sizes/thresholds. Require exact CPU agreement and measure both kernel
+and end-to-end time before selecting the production version.
+
 ## Build
 
 Requirements:
@@ -195,7 +287,7 @@ Both arguments are optional. The defaults are `assets/lena.jpg` and
 
 ## Run the benchmarks
 
-Every benchmark accepts an optional input path and falls back to
+The grayscale, Gaussian and Sobel benchmarks accept an optional input path and fall back to
 `assets/lena.jpg`:
 
 ```powershell
@@ -209,9 +301,22 @@ Each benchmark:
 1. Loads and validates the image.
 2. Performs untimed input preparation when required.
 3. Warms up the CPU and GPU implementations.
-4. Measures CPU, kernel-only, transfer, and end-to-end time.
+4. Measures CPU, kernel-only, and end-to-end time (the original three also report
+   upload and download separately).
 5. Compares CPU and GPU output byte-for-byte.
 6. Saves both results under `output/` for visual inspection.
+
+Heart bokeh accepts an image path or `--demo`, threshold, intensity, and run count:
+
+```powershell
+.\build\Release\benchmark_heart_bokeh.exe --demo 200 0.05 20
+.\build\Release\benchmark_heart_bokeh.exe assets\stars.jpg 200 0.05 20
+```
+
+With no arguments it uses synthetic lights, threshold 200, intensity 0.35, and
+five runs. It saves `*_bokeh_input.png`, `*_bokeh_cpu.png`, and
+`*_bokeh_gpu.png` in `output/`. Reusing an input overwrites its previous results.
+The program exits unsuccessfully if CPU/GPU output differs.
 
 ## Run the tests
 
@@ -220,7 +325,8 @@ cmake --build build --config Release
 ctest --test-dir build -C Release --output-on-failure
 ```
 
-The suite currently contains 20 focused test cases:
+CTest currently runs six test executables, including the original filter and
+pipeline tests plus separate CPU and GPU bokeh tests:
 
 - **Grayscale:** known RGB values, already-gray input, dimensions that create
   partial CUDA blocks, and invalid image shapes
@@ -232,6 +338,12 @@ The suite currently contains 20 focused test cases:
 - **Pipeline:** disabled stages, a single stage versus its direct launcher,
   grayscale-to-blur ordering, repeated calls, device-buffer reallocation, and
   invalid host input
+- **CPU bokeh:** zero-intensity identity, black input, impulse sample count,
+  notch/tip orientation, rounding, saturation, threshold rejection and invalid
+  arguments
+- **GPU bokeh:** 100 pattern comparisons across five shapes, four thresholds and
+  five intensities; colored impulses at corners/center; black/white inputs;
+  shared CPU/GPU argument rejection including overlap and nonfinite intensity
 
 The small hand-calculated cases catch algorithm mistakes, while the 17x19 cases
 exercise incomplete CUDA blocks at the image boundaries. CPU/GPU and
@@ -264,6 +376,9 @@ CudaLearning/
 ```
 
 ## Next steps
+
+- Integrate heart bokeh into `PipelineOptions` and test stage ordering
+- Benchmark a shared-memory bokeh variant against the current global-read kernel
 
 - Add tests alongside the sharpen and resize implementations
 - Add nearest-neighbor and bilinear resize
