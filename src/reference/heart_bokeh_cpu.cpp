@@ -1,33 +1,42 @@
 #include "reference/heart_bokeh_cpu.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <functional>
 #include <iterator>
+#include <stdexcept>
 
 namespace
 {
 
 // A '#' marks an open aperture sample and a '.' marks a blocked sample.
-constexpr int apertureWidth = 29;
-constexpr int apertureHeight = 14;
+constexpr int apertureWidth = 21;
+constexpr int apertureHeight = 20;
 
 // Each row has apertureWidth visible characters plus its terminating null
 // character. Access a position with heartAperture[row][column].
 constexpr char heartAperture[apertureHeight][apertureWidth + 1] =
 {
-    ".....######.......######.....",
-    "...##########...##########...",
-    ".#############.#############.",
-    "#############################",
-    "#############################",
-    "#############################",
-    ".###########################.",
-    "...#######################...",
-    ".....###################.....",
-    ".......###############.......",
-    ".........###########.........",
-    "...........#######...........",
-    ".............###.............",
-    "..............#.............."
+    "....####.....####....",
+    "..########.########..",
+    ".#########.#########.",
+    "##########.##########",
+    "#####################",
+    "#####################",
+    "#####################",
+    "#####################",
+    ".###################.",
+    ".###################.",
+    "..#################..",
+    "..#################..",
+    "...###############...",
+    "....#############....",
+    ".....###########.....",
+    "......#########......",
+    ".......#######.......",
+    "........#####........",
+    ".........###.........",
+    "..........#.........."
 };
 
 struct ApertureCoordinate
@@ -93,30 +102,148 @@ bool apertureContains(int offsetColumn, int offsetRow)
     return heartAperture[position.row][position.column] == '#';
 }
 
-// TODO: Validate that input and output are non-null, equally sized RGB images.
-// TODO: Validate that intensity is in the range you decide to support.
-void validateArguments(...)
+// Validate that input and output are non-null, equally sized RGB images.
+// Validate intensity is within supported range.
+void validateArguments(
+    ConstImageView input,
+    ImageView output,
+    float intensity)
 {
+    if (input.data == nullptr || output.data == nullptr ||
+        input.width <= 0 || input.height <= 0 ||
+        input.width != output.width ||
+        input.height != output.height ||
+        input.channels != 3 || output.channels != 3)
+    {
+        throw std::invalid_argument(
+            "Heart-shaped bokeh filter expects equally sized RGB input and output images"
+        );
+    }
 
+    if (!std::isfinite(intensity) ||
+        intensity < 0.0f || intensity > 1.0f)
+    {
+        throw std::invalid_argument(
+            "Heart-shaped bokeh filter expects intensity between 0.0 and 1.0"
+        );
+    }
+
+    // std::less provides a total order even for pointers to separate allocations.
+    const auto less = std::less<const unsigned char*>{};
+    if (less(input.data, output.data + output.bytes()) &&
+        less(output.data, input.data + input.bytes()))
+    {
+        throw std::invalid_argument("Heart bokeh requires non-overlapping buffers");
+    }
 }
 
-// TODO: Calculate a pixel's luminance for comparison with brightnessThreshold.
-// unsigned char luminance(...);
+// Calculate a pixel's luminance for comparison with brightnessThreshold.
+unsigned char calcLuminance(
+    unsigned char red,
+    unsigned char green,
+    unsigned char blue)
+{
+    const int pixelLuminance =
+        (77 * red +
+         150 * green +
+         29 * blue +
+         128) / 256;
 
-// TODO: Gather bright neighboring pixels selected by the heart aperture.
-// TODO: Combine the gathered highlight with the original pixel.
-// void processPixel(...);
+    return static_cast<unsigned char>(pixelLuminance);
+}
+
+// Gather bright neighbors and add their light to the original pixel.
+void processPixel(
+    int outputColumn,
+    int outputRow,
+    ConstImageView input,
+    ImageView output,
+    unsigned char brightnessThreshold,
+    float intensity)
+{
+    int redSum = 0;
+    int greenSum = 0;
+    int blueSum = 0;
+
+    for (int row = 0; row < apertureHeight; ++row)
+    {
+        for (int column = 0; column < apertureWidth; ++column)
+        {
+            if (heartAperture[row][column] == '.')
+            {
+                continue;
+            }
+
+            const int offsetRow = row - apertureAnchor.row;
+            const int offsetColumn = column - apertureAnchor.column;
+
+            const int sourceColumn = outputColumn - offsetColumn;
+            const int sourceRow = outputRow - offsetRow;
+
+            if (sourceRow < 0 || sourceRow >= input.height ||
+                sourceColumn < 0 || sourceColumn >= input.width)
+            {
+                continue;
+            }
+
+            const std::size_t sourceIndex =
+                (static_cast<std::size_t>(sourceRow) * input.width + sourceColumn) * input.channels;
+
+            const unsigned char red = input.data[sourceIndex];
+            const unsigned char green = input.data[sourceIndex + 1];
+            const unsigned char blue = input.data[sourceIndex + 2];
+
+            const unsigned char luminance = calcLuminance(red, green, blue);
+
+            if (luminance < brightnessThreshold)
+            {
+                continue;
+            }
+
+            redSum += red;
+            greenSum += green;
+            blueSum += blue;
+        }
+    }
+
+    const std::size_t outputIndex =
+        (static_cast<std::size_t>(outputRow) * output.width + outputColumn) * output.channels;
+
+    const auto compositeChannel = [intensity](
+        unsigned char original,
+        int accumulatedLight)
+    {
+        const int scaledLight = static_cast<int>(
+            std::round(static_cast<float>(accumulatedLight) * intensity));
+        const int combined = static_cast<int>(original) + scaledLight;
+        return static_cast<unsigned char>(std::min(combined, 255));
+    };
+
+    output.data[outputIndex] = compositeChannel(
+        input.data[outputIndex], redSum);
+    output.data[outputIndex + 1] = compositeChannel(
+        input.data[outputIndex + 1], greenSum);
+    output.data[outputIndex + 2] = compositeChannel(
+        input.data[outputIndex + 2], blueSum);
+}
 
 } // namespace
 
 namespace reference
 {
 
-// TODO: Define heartBokeh after completing the helpers above.
-//
-// Suggested outline:
-//   1. Validate the arguments.
-//   2. Visit every output pixel.
-//   3. Process that pixel using the heart aperture.
+void heartBokeh(ConstImageView input, ImageView output, unsigned char brightnessThreshold, float intensity)
+{
+    validateArguments(input, output, intensity);
+
+    for (int row = 0; row < output.height; ++row)
+    {
+        for (int column = 0; column < output.width; ++column)
+        {
+            processPixel(column, row, input, output, brightnessThreshold, intensity);
+        }
+    }
+
+}
 
 } // namespace reference

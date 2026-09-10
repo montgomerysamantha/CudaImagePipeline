@@ -6,8 +6,10 @@
 
 // Launches the CUDA heart-shaped bokeh filter.
 //
-// TODO: Keep the CPU and CUDA versions' threshold, intensity, border, and
-// rounding behavior identical so their results can be compared directly.
+// Same additive 21x20 aperture, inclusive threshold, rounding and clamping as
+// reference::heartBokeh. Requires positive equal RGB shapes, non-overlapping
+// device buffers, and finite intensity in [0,1]. Invalid arguments throw.
+// Launches asynchronously on stream; caller must synchronize before host reads.
 void launchHeartBokeh(
     ConstImageView input,
     ImageView output,

@@ -13,6 +13,7 @@ add_library(image_pipeline
     src/core/device_image.cu
     src/core/image_io.cpp
     src/filters/grayscale.cu
+    src/filters/heart_bokeh.cu
     src/filters/gaussian_blur.cu
     src/filters/edge_detection.cu
     src/filters/sharpen.cu
@@ -36,6 +37,7 @@ add_library(image_references
     src/reference/grayscale_cpu.cpp
     src/reference/gaussian_blur_cpu.cpp
     src/reference/sobel_cpu.cpp
+    src/reference/heart_bokeh_cpu.cpp
 )
 
 target_include_directories(image_references
@@ -91,17 +93,26 @@ set_target_properties(
 
 include(CTest)
 
+add_executable(benchmark_heart_bokeh benchmarks/benchmark_heart_bokeh.cu)
+target_link_libraries(benchmark_heart_bokeh PRIVATE image_pipeline image_references)
+set_target_properties(benchmark_heart_bokeh PROPERTIES CUDA_RUNTIME_LIBRARY Shared)
+
 if(BUILD_TESTING)
+    add_executable(test_heart_bokeh_cpu tests/test_heart_bokeh_cpu.cpp)
+    target_link_libraries(test_heart_bokeh_cpu PRIVATE image_references)
+    add_test(NAME heart_bokeh_cpu COMMAND test_heart_bokeh_cpu)
     add_executable(test_grayscale tests/test_grayscale.cu)
     add_executable(test_gaussian_blur tests/test_gaussian_blur.cu)
     add_executable(test_edge_detection tests/test_edge_detection.cu)
     add_executable(test_pipeline tests/test_pipeline.cu)
+    add_executable(test_heart_bokeh tests/test_heart_bokeh.cu)
 
     set(cuda_test_targets
         test_grayscale
         test_gaussian_blur
         test_edge_detection
         test_pipeline
+        test_heart_bokeh
     )
 
     foreach(test_target IN LISTS cuda_test_targets)
@@ -121,4 +132,5 @@ if(BUILD_TESTING)
     add_test(NAME gaussian_blur COMMAND test_gaussian_blur)
     add_test(NAME edge_detection COMMAND test_edge_detection)
     add_test(NAME pipeline COMMAND test_pipeline)
+    add_test(NAME heart_bokeh COMMAND test_heart_bokeh)
 endif()
