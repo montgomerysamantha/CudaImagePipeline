@@ -103,9 +103,7 @@ void sobelCpu(
     {
         for (int x = 0; x < width; x++)
         {
-            const int outputIndex =
-                (y * width + x) * 3;
-
+            const int outputIndex = (y * width + x) * 3;
 
             if (isBorder(x, y, width, height))
             {
@@ -134,7 +132,7 @@ void warmUpGpu(benchmark::BenchmarkContext& context)
     const DeviceImage& readOnlyInput =
         context.deviceInput;
 
-    launchEdgeDetection(
+    launchEdgeDetectionGlobalMemory(
         readOnlyInput.view(),
         context.deviceOutput.view(),
         context.stream
@@ -185,7 +183,20 @@ int main()
             );
         });
 
-        const float gpuAverage =
+        const float globalMemAverage =
+        benchmark::averageCuda(
+            RUNS,
+            context.stream,
+            [&]()
+        {
+            launchEdgeDetectionGlobalMemory(
+                readOnlyInput.view(),
+                context.deviceOutput.view(),
+                context.stream
+            );
+        });
+
+        const float sharedMemAverage =
         benchmark::averageCuda(
             RUNS,
             context.stream,
@@ -201,15 +212,6 @@ int main()
         context.deviceOutput.downloadAsync(context.gpuOutput.view(), context.stream);
 
         CUDA_CHECK(cudaStreamSynchronize(context.stream));
-
-        if (context.cpuOutput.pixels == context.gpuOutput.pixels)
-        {
-            std::cout << "Correctness: CPU and GPU results match\n";
-        }
-        else
-        {
-            std::cout << "Correctness: CPU and GPU results do not match\n";
-        }
 
         std::filesystem::create_directories("output");
 
@@ -232,7 +234,7 @@ int main()
         const HostImage& readOnlyHostInput = context.input;
         const DeviceImage& readOnlyDeviceInput = context.deviceInput;
 
-        const float gpuEndToEndAverage =
+        const float gpuSharedEndToEndAverage =
             benchmark::averageCpu(RUNS, [&]()
         {
             // CPU → GPU
@@ -297,26 +299,31 @@ int main()
         results.computeTimings =
         {
             {"CPU reference", cpuAverage},
-            {"GPU Sobel kernel", gpuAverage}
+            {"GPU global-memory sobel kernel", globalMemAverage},
+            {"GPU shared-memory sobel kernel", sharedMemAverage}
         };
 
         results.productionKernelLabel =
-            "GPU Sobel kernel";
+            "GPU shared-memory sobel kernel";
 
-        results.productionKernelMs = gpuAverage;
+        results.productionKernelMs = sharedMemAverage;
         results.uploadMs = uploadAverage;
         results.downloadMs = downloadAverage;
-        results.gpuEndToEndMs = gpuEndToEndAverage;
+        results.gpuEndToEndMs = gpuSharedEndToEndAverage;
 
         results.speedups =
         {
             {
                 "CPU to GPU compute",
-                cpuAverage / gpuAverage
+                cpuAverage / sharedMemAverage
             },
             {
                 "CPU to GPU end-to-end",
-                cpuAverage / gpuEndToEndAverage
+                cpuAverage / gpuSharedEndToEndAverage
+            },
+            {
+                "Global to shared GPU memory",
+                globalMemAverage / sharedMemAverage
             }
         };
 

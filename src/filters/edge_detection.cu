@@ -97,7 +97,7 @@ __device__  bool isBorder(int x, int y, int width, int height)
     return isBorderCoord;
 }
 
-__global__ void sobelKernel(
+__global__ void sobelGlobalMemKernel(
     int width,
     int height,
     const unsigned char* input,
@@ -133,6 +133,90 @@ __global__ void sobelKernel(
     writeRgbDevice(edge, output, outputIndex);
 }
 
+__device__ SobelGradients getSharedGradients(
+    int sharedX,
+    int sharedY,
+    const unsigned char tile[tileHeight][tileWidth])
+{
+    int gx = 0;
+    int gy = 0;
+
+    for (int dy = -1; dy <= 1; ++dy)
+    {
+        for (int dx = -1; dx <= 1; ++dx)
+        {
+            const int gray = tile[sharedY + dy][sharedX + dx];
+
+            gx += gray * sobelXDevice[dy + 1][dx + 1];
+            gy += gray * sobelYDevice[dy + 1][dx + 1];
+        }
+    }
+
+    return {gx, gy};
+}
+
+__global__ void sobelSharedMemKernel(
+    int width,
+    int height,
+    const unsigned char* input,
+    unsigned char* output)
+{
+    // output image pixel that this worker owns
+    const int x = blockIdx.x * blockDim.x + threadIdx.x;
+    const int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    // where owned pixel sits inside the shared tile.
+    const int sharedX = threadIdx.x + radius;
+    const int sharedY = threadIdx.y + radius;
+
+    // shared grayscale tile.
+    __shared__ unsigned char tile[tileHeight][tileWidth];
+
+    // load global pixels into the shared tile and its halo.
+    for (int tileY = threadIdx.y; tileY < tileHeight; tileY += blockDim.y)
+    {
+        for (int tileX = threadIdx.x; tileX < tileWidth; tileX += blockDim.x)
+        {
+            // find global location of pixel that needs to be saved to tile
+            const int globalX = blockIdx.x * blockDim.x + tileX - radius;
+            const int globalY = blockIdx.y * blockDim.y + tileY - radius;
+
+            unsigned char value = 0;
+            if (globalX >= 0 && globalX < width && globalY >= 0 && globalY < height)
+            {
+                value = input[(globalY * width + globalX) * 3];
+            }
+            tile[tileY][tileX] = value;
+        }
+    }
+
+    // wait for the entire block to finish loading pixels
+    __syncthreads();
+
+    // return if this thread is outside the image.
+    if (x >= width || y >= height)
+    {
+        return;
+    }
+
+    // for image-border pixels, change to black and return
+    const int outputIndex = (y * width + x) * 3;
+    if (isBorder(x, y, width, height))
+    {
+        writeRgbDevice(0, output, outputIndex);
+        return;
+    }
+
+    // calculate Gx and Gy using the shared tile
+    const SobelGradients gradients = getSharedGradients(sharedX, sharedY, tile);
+
+    // calculate the edge magnitude and write RGB output
+    const unsigned char edge =
+        calcEdge(gradients.gx, gradients.gy);
+
+    writeRgbDevice(edge, output, outputIndex);
+}
+
 void validateRgbPair(
     ConstImageView input,
     ImageView output)
@@ -161,6 +245,7 @@ void validateRgbPair(
 }
 
 }
+
 void launchEdgeDetection(ConstImageView input, ImageView output, cudaStream_t stream)
 {
     validateRgbPair(input, output);
@@ -169,10 +254,7 @@ void launchEdgeDetection(ConstImageView input, ImageView output, cudaStream_t st
         (input.width + threads.x - 1) / threads.x,
         (input.height + threads.y - 1) / threads.y);
 
-    sobelKernel<<<blocks, threads, 0, stream>>>(
-        input.width, input.height, input.data, output.data);
-
-    sobelKernel<<<blocks, threads, 0, stream>>>(
+    sobelSharedMemKernel<<<blocks, threads, 0, stream>>>(
         input.width,
         input.height,
         input.data,
@@ -182,3 +264,20 @@ void launchEdgeDetection(ConstImageView input, ImageView output, cudaStream_t st
     CUDA_CHECK(cudaGetLastError());
 }
 
+void launchEdgeDetectionGlobalMemory(ConstImageView input, ImageView output, cudaStream_t stream)
+{
+    validateRgbPair(input, output);
+    constexpr dim3 threads(blockWidth, blockHeight);
+    const dim3 blocks(
+        (input.width + threads.x - 1) / threads.x,
+        (input.height + threads.y - 1) / threads.y);
+
+    sobelGlobalMemKernel<<<blocks, threads, 0, stream>>>(
+        input.width,
+        input.height,
+        input.data,
+        output.data
+    );
+
+    CUDA_CHECK(cudaGetLastError());
+}
