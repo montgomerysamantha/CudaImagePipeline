@@ -56,29 +56,64 @@ __host__ __device__ int calcGray(int r, int g, int b)
     return (299 * r + 587 * g + 114 * b) / 1000;
 }
 
-__global__ void grayscaleGpu(int width, int height, unsigned char* image)
+__host__ __device__
+void blurPixel(
+    int x,
+    int y,
+    int width,
+    int height,
+    const unsigned char* input,
+    unsigned char* output)
 {
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
-
-    if (x < width && y < height)
+    int kernel[3][3] =
     {
-        int pixel = y * width + x;
-        int pixelIndex = pixel * 3;
+        {1, 2, 1},
+        {2, 4, 2},
+        {1, 2, 1}
+    };
 
-        // Read R, G, B
-        int r = image[pixelIndex];
-        int g = image[pixelIndex + 1];
-        int b = image[pixelIndex + 2];
+    int pixel = y * width + x;
+    int pixelIndex = pixel * 3;
 
-        // Calculate gray values
-        int gray = calcGray(r, g, b);
+    int rSum = 0;
+    int gSum = 0;
+    int bSum = 0;
+    int weightSum = 0;
 
-        // Write gray back to R, G, B
-        image[pixelIndex] = gray;
-        image[pixelIndex + 1] = gray;
-        image[pixelIndex + 2] = gray;
+    for (int dy = -1; dy <= 1; dy++)
+    {
+        for (int dx = -1; dx <= 1; dx++)
+        {
+            int neighborX = x + dx;
+            int neighborY = y + dy;
+
+            if (neighborX >= 0 && neighborX < width &&
+                neighborY >= 0 && neighborY < height)
+            {
+                int weight = kernel[dy + 1][dx + 1];
+
+                int neighborPixel =
+                    neighborY * width + neighborX;
+
+                int neighborPixelIndex =
+                    neighborPixel * 3;
+
+                int r = input[neighborPixelIndex];
+                int g = input[neighborPixelIndex + 1];
+                int b = input[neighborPixelIndex + 2];
+
+                rSum += r * weight;
+                gSum += g * weight;
+                bSum += b * weight;
+
+                weightSum += weight;
+            }
+        }
     }
+
+    output[pixelIndex] = rSum / weightSum;
+    output[pixelIndex + 1] = gSum / weightSum;
+    output[pixelIndex + 2] = bSum / weightSum;
 }
 
 __global__ void gaussianBlurGpu(int width, int height, const unsigned char* input, unsigned char* output)
@@ -88,109 +123,17 @@ __global__ void gaussianBlurGpu(int width, int height, const unsigned char* inpu
 
     if (x < width && y < height)
     {
-        int pixel = y * width + x;
-        int pixelIndex = pixel * 3;
-
-        int kernel[3][3] =
-        {
-            {1, 2, 1},
-            {2, 4, 2},
-            {1, 2, 1}
-        };
-
-        int rSum = 0;
-        int gSum = 0;
-        int bSum = 0;
-        int weightSum = 0;
-
-        for (int dy = -1; dy <= 1; dy++)
-        {
-            for (int dx = -1; dx <= 1; dx++)
-            {
-                int neighborX = x + dx;
-                int neighborY = y + dy;
-
-                if (neighborX >= 0 && neighborX < width &&
-                    neighborY >= 0 && neighborY < height)
-                {
-                    int weight = kernel[dy + 1][dx + 1];
-                    int neighborPixel = neighborY * width + neighborX;
-                    int neighborPixelIndex = neighborPixel * 3;
-
-                    int r = input[neighborPixelIndex];
-                    int g = input[neighborPixelIndex + 1];
-                    int b = input[neighborPixelIndex + 2];
-                    rSum += r * weight;
-                    gSum += g * weight;
-                    bSum += b * weight;
-                    weightSum += weight;
-                }
-            }
-        }
-        int r_blur = rSum / weightSum;
-        int g_blur = gSum / weightSum;
-        int b_blur = bSum / weightSum;
-
-        output[pixelIndex] = r_blur;
-        output[pixelIndex + 1] = g_blur;
-        output[pixelIndex + 2] = b_blur;
+       blurPixel(x, y, width, height, input, output);
     }
 }
 
 void gaussianBlurCpu(int width, int height, const unsigned char* input, unsigned char* output)
 {
-    int kernel[3][3] =
-    {
-        {1, 2, 1},
-        {2, 4, 2},
-        {1, 2, 1}
-    };
-
     for (int y = 0; y < height; y++)
     {
         for (int x = 0; x < width; x++)
         {
-            int pixel = y * width + x;
-            int pixelIndex = pixel * 3;
-
-            int rSum = 0;
-            int gSum = 0;
-            int bSum = 0;
-            int weightSum = 0;
-
-            for (int dy = -1; dy <= 1; dy++)
-            {
-                for (int dx = -1; dx <= 1; dx++)
-                {
-                    int neighborX = x + dx;
-                    int neighborY = y + dy;
-
-                    if (neighborX >= 0 && neighborX < width &&
-                        neighborY >= 0 && neighborY < height)
-                    {
-                        int weight = kernel[dy + 1][dx + 1];
-                        int neighborPixel = neighborY * width + neighborX;
-                        int neighborPixelIndex = neighborPixel * 3;
-
-                        int r = input[neighborPixelIndex];
-                        int g = input[neighborPixelIndex + 1];
-                        int b = input[neighborPixelIndex + 2];
-                        rSum += r * weight;
-                        gSum += g * weight;
-                        bSum += b * weight;
-                        weightSum += weight;
-                    }
-                }
-            }
-
-            int r_blur = rSum / weightSum;
-            int g_blur = gSum / weightSum;
-            int b_blur = bSum / weightSum;
-
-            output[pixelIndex] = r_blur;
-            output[pixelIndex + 1] = g_blur;
-            output[pixelIndex + 2] = b_blur;
-
+            blurPixel(x, y, width, height, input, output);
         }
     }
 }
