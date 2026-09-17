@@ -1,6 +1,6 @@
 <div align="center">
 
-# CUDA Image Pipeline
+# ⋆｡°✩  CUDA Image Pipeline  ✩°｡⋆
 
 ### A GPU image processing pipeline built for correctness and performance
 
@@ -21,7 +21,7 @@ The [technical guide](docs/technical.md) explores where the GPU wins, where tran
 
 </div>
 
-## From stars to hearts
+## ⋆｡°✩ From stars to hearts ♡₊˚
 
 Turn bright points into heart-shaped highlights—with a custom CUDA bokeh filter.
 
@@ -33,7 +33,9 @@ Turn bright points into heart-shaped highlights—with a custom CUDA bokeh filte
   </tr>
 </table>
 
-**Find the edges. Bring out the details. Change the scale.**
+## ⊹₊⟡⋆🎨 Transform your images 🖌️⋆⟡₊⊹
+
+Sharpen details, detect edges with Sobel, turn stars into hearts, convert to grayscale, soften with Gaussian blur, or resize.
 
 <table>
   <tr><th>Original</th><th>Sobel edges</th><th>Sharpen</th></tr>
@@ -44,13 +46,14 @@ Turn bright points into heart-shaped highlights—with a custom CUDA bokeh filte
   </tr>
 </table>
 
-Mix and match **grayscale → Gaussian blur → heart bokeh → Sobel → sharpen → resize**.
-Enabled stages run in that order; intermediate images stay on the GPU.
+Choose your effects: **grayscale → Gaussian blur → heart bokeh → Sobel → sharpen → resize**.
+
+Enabled filters run in that order. Images stay on the GPU between filter stages, avoiding unnecessary PCI Express transfers.
 [Explore every effect →](docs/technical.md#gallery)
 
-## Small GPU. Real results.
+## 🔥 Performance, with receipts ⚡
 
-Measured on a **GeForce GTX 1060 3GB**:
+Measured on a vintage **GeForce GTX 1060 3GB**:
 
 | What changed | What happened |
 |---|---|
@@ -63,7 +66,7 @@ Recorded means over 20 runs, CUDA 12.9, Release build. The chain sweep uses
 this project's implementations, not optimized CPU libraries. Full settings,
 raw results, and timing boundaries live in the [technical guide](docs/technical.md#performance-and-methodology).
 
-## Try it
+## ╰┈➤ Try it 🔨🏗️🧱
 
 Verified setup: **Windows · Visual Studio 2022 C++ · CUDA 12.9 · CMake 3.22+**.
 Run from the repository root with the compiler and CUDA tools available:
@@ -88,12 +91,11 @@ cmake -S . -B build -DCUDA_ARCHITECTURES="75;86"
 
 [Architecture overrides and build details →](docs/technical.md#build-run-test)
 
-## Go deeper
+## Go deeper down the CUDA rabbit hole... 𓂃˖˳·˖ ִֶָ ⋆🐇⋆ ִֶָ˖·˳˖𓂃 ִֶָ
 
 - **[How it works](docs/technical.md#architecture)** — buffer reuse, stage ordering, and memory ownership.
 - **[What's measured](docs/technical.md#performance-and-methodology)** — CPU/GPU comparisons, transfer costs, and shared-memory experiments.
 - **[Run the benchmarks](docs/technical.md#reproduce-the-benchmarks)** — reproduce the results on your hardware.
 - **[What is tested](docs/technical.md#correctness-and-test-coverage)** — exact pixel checks and integration coverage.
 
-Built as a hands-on exploration of C++, CUDA, and the difference between a fast
-kernel and a fast application.
+Built as a hands-on exploration of C++, CUDA, and how graphics processing works.
