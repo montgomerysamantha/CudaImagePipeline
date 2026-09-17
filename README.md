@@ -32,8 +32,8 @@ That makes avoiding unnecessary copies just as important as writing a fast kerne
 | Automated checks | **57 test functions in 9 test programs** |
 
 These numbers average 20 runs on a 1960×1960 color image using CUDA 12.9 and a
-Release build. Each filter was measured separately; measuring the complete
-chain is still on the to-do list. [How the timings work](#performance-and-methodology).
+Release build. The individual-filter results were measured separately; the complete
+chain comparison is recorded below. [How the timings work](#performance-and-methodology).
 
 ### Build, run, test
 
@@ -242,8 +242,51 @@ build. The first table averages 20 runs on a 1960×1960 RGB image (10.991 MiB).
 Each CPU version uses one thread, and the CPU and GPU results matched exactly,
 byte for byte. Your timings will depend on your hardware and the image.
 
-Each row measures one filter. Comparing the full chain with filters run separately
+Each row measures one filter. The full-chain comparison appears below; profiling
 and adding a sharpen benchmark remain planned work.
+
+#### Complete pipeline versus transfers around each stage
+
+Build and run the deterministic synthetic-image sweep (optional argument: timed
+runs per size, default 20):
+
+```powershell
+cmake --build build --config Release --target benchmark_pipeline
+.\build\Release\benchmark_pipeline.exe 20
+```
+
+Both paths run grayscale, Gaussian blur, heart bokeh (threshold 200, intensity
+0.05), Sobel, sharpen (strength 1), then nearest-neighbor resize to half width
+and height. The resident path uses one `ImagePipeline` and two transfers. The
+separate path uses six single-stage pipelines and twelve transfers, passing each
+host output into the next stage. Both use the same production kernels.
+
+Measured on the GTX 1060 3GB, CUDA 12.9, Release build, with 3 warm-up runs per
+path/size and 20 timed runs. Execution order alternates. Every pair of outputs,
+including warm-ups, matched exactly. Inputs are deterministic RGB coordinate
+patterns, not photographs. Results are arithmetic means from one local run:
+
+| Input size | Resident wall ms | Separate wall ms | End-to-end speedup |
+|---|---:|---:|---:|
+| 320×240 | 0.690 | 2.750 | 3.984x |
+| 640×480 | 1.876 | 7.996 | 4.263x |
+| 1280×720 | 4.774 | 20.818 | 4.360x |
+| 1920×1080 | 10.479 | 44.758 | 4.271x |
+
+The executable also reports upload, processing, and download event timings;
+see the [recorded output](docs/pipeline-benchmark-results.txt). Device allocations
+are warmed and reused. Wall time includes each synchronous `process()` call's
+host output allocation, event management, copies, launches, and synchronization.
+Input generation and result comparison are outside the timed intervals. Host
+storage is pageable, as in the production pipeline.
+
+This compares the two API usage patterns, including their different allocation
+and synchronization overheads. It does not isolate PCIe cost alone. CUDA event
+intervals can include scheduling/submission gaps, and component timings need
+not sum to wall time. The output agreement checks orchestration, not independent
+mathematical correctness; the filter tests supply separate correctness checks.
+These measurements have no confidence intervals and should be rerun on other
+workloads and hardware before generalizing the speedups.
 
 #### Individual-filter timings
 
@@ -480,6 +523,6 @@ CudaLearning/
 
 - **Completed:** nearest-neighbor resize, reusable destination buffer, and standalone/pipeline tests.
 - **Sharpen:** CPU reference, benchmark, and a before/after gallery comparison.
-- **Measurement:** compare a full filter chain with running filters separately; try different bokeh thread-group shapes.
+- **Measurement:** profile the full-chain timing differences; try different bokeh thread-group shapes.
 - **Exploration:** bilinear resize, pinned host memory, kernel fusion, and CUDA Graphs.
 - **Portability:** Linux build verification and GPU-backed CI.

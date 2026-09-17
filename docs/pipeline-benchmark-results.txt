@@ -1,0 +1,21 @@
+# GPU: NVIDIA GeForce GTX 1060 3GB
+# Chain: grayscale -> blur -> bokeh -> Sobel -> sharpen -> half-size resize
+# Bokeh threshold=200, intensity=0.05; sharpen strength=1
+# Runs: 20; warm-ups per mode/size: 3
+# Resident: 2 transfers; separate: 12 transfers per chain
+# CUDA events: upload/processing/download; steady_clock: synchronous API wall time
+# Device buffers warmed/reused; host allocations, events and synchronization included in wall time
+# Input generation and output comparison excluded; pageable host memory
+size,mode,upload_ms,processing_ms,download_ms,wall_ms
+320x240,resident,0.134,0.390,0.098,0.690
+320x240,separate,0.777,0.687,0.882,2.750
+# 320x240 outputs match; end-to-end speedup: 3.984x
+640x480,resident,0.376,1.136,0.170,1.876
+640x480,separate,2.215,1.549,2.468,7.996
+# 640x480 outputs match; end-to-end speedup: 4.263x
+1280x720,resident,1.014,2.921,0.385,4.774
+1280x720,separate,6.280,3.334,6.186,20.818
+# 1280x720 outputs match; end-to-end speedup: 4.360x
+1920x1080,resident,2.547,6.782,0.639,10.479
+1920x1080,separate,15.132,7.942,12.800,44.758
+# 1920x1080 outputs match; end-to-end speedup: 4.271x

@@ -93,6 +93,10 @@ set_target_properties(
 
 include(CTest)
 
+add_executable(benchmark_pipeline benchmarks/benchmark_pipeline.cu)
+target_link_libraries(benchmark_pipeline PRIVATE image_pipeline)
+set_target_properties(benchmark_pipeline PROPERTIES CUDA_RUNTIME_LIBRARY Shared)
+
 add_executable(benchmark_heart_bokeh benchmarks/benchmark_heart_bokeh.cu)
 target_link_libraries(benchmark_heart_bokeh PRIVATE image_pipeline image_references)
 set_target_properties(benchmark_heart_bokeh PROPERTIES CUDA_RUNTIME_LIBRARY Shared)
