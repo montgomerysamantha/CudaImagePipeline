@@ -2,6 +2,30 @@
 
 #include <stdexcept>
 
+/*
+width = 5
+height = 1
+[A B C D E]
+
+sourceX = floor(outputX × inputWidth  / outputWidth)
+sourceY = floor(outputY × inputHeight / outputHeight)
+
+Which source indices do output positions 0, 1, and 2 select?
+sourceX = floor(outputX × 0 / outputWidth)
+sourceY = floor(outputY × 0 / outputHeight)
+
+A
+
+sourceX = floor(outputX × 0 / outputWidth)
+sourceY = floor(outputY × 1 / outputHeight)
+
+B
+
+sourceX = floor(outputX × 0 / outputWidth)
+sourceY = floor(outputY × 2 / outputHeight)
+
+C
+*/
 void launchResize(ConstImageView input, ImageView output, cudaStream_t stream)
 {
     (void)input;

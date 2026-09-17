@@ -1,6 +1,6 @@
 # CUDA Image Pipeline
 
-**One upload. Five GPU filters. One download.**
+**Image filters on the GPU, with the tests and timings to see how they work.**
 
 [![C++17](https://img.shields.io/badge/C%2B%2B-17-00599C?logo=cplusplus)](https://isocpp.org/)
 [![CUDA 12.9](https://img.shields.io/badge/CUDA-12.9-76B900?logo=nvidia&logoColor=white)](https://developer.nvidia.com/cuda-toolkit)
@@ -8,26 +8,37 @@
 
 ## TL;DR
 
-A C++/CUDA image-processing project exploring **when GPU acceleration pays off**:
-keep images on the GPU between filters, compare memory strategies, and measure
-transfer costs alongside kernel speed. Implemented stages include grayscale,
-Gaussian blur, Sobel edges, heart-shaped bokeh, and sharpen.
+I'm building this project to learn CUDA by making things I can actually see:
+turning photos grayscale, softening details, finding edges, sharpening images,
+and turning bright stars into hearts.
+
+CUDA lets me run C++ code on an NVIDIA graphics card (GPU), where many pixels
+can be processed at once. The interesting part is figuring out when that is
+actually faster. Copying an image to and from the GPU takes time too.
+
+The pipeline sends an image to the GPU once, applies the selected filters, and
+brings the finished image back. **The goal is to spend more time processing
+pixels and less time moving them around.**
+
+For example, in the recorded grayscale benchmark, copying the image to the GPU
+and back took about **8.8 ms**, while the filter itself took only **0.43 ms**.
+That makes avoiding unnecessary copies just as important as writing a fast kernel.
 
 | Measured highlight | Result on GTX 1060 3GB |
 |---|---|
-| Heart bokeh vs. single-threaded CPU | **113.7x end-to-end speedup** |
-| Gaussian blur vs. single-threaded CPU | **68.8x kernel speedup · 6.0x end-to-end** |
-| Shared-memory bokeh vs. global-memory bokeh | **2.88x faster kernel** |
-| Correctness coverage | **31 test functions across 7 CTest executables** |
+| Heart effect vs. the CPU version using one thread | **113.7x faster, including image transfers** |
+| Gaussian blur vs. the CPU version using one thread | **68.8x faster processing · 6.0x including transfers** |
+| Heart effect with pixels shared between nearby GPU threads | **2.88x faster processing** |
+| Automated checks | **31 test functions in 7 test programs** |
 
-Timing highlights are recorded averages of 20 runs on a 1960x1960 RGB image,
-CUDA 12.9, Release build. They measure **individual filters**, not the full
-multi-stage pipeline. [Methodology and full results](#performance-and-methodology).
+These numbers average 20 runs on a 1960×1960 color image using CUDA 12.9 and a
+Release build. Each filter was measured separately; measuring the complete
+chain is still on the to-do list. [How the timings work](#performance-and-methodology).
 
 ### Build, run, test
 
 Tested setup: **Windows · Visual Studio 2022 with Desktop C++ · CUDA 12.9 · CMake 3.22+**.
-Use a terminal with CMake and the CUDA toolchain available, from the repository root.
+Open a terminal in the main project folder with CMake and the CUDA tools available.
 The current build targets the GTX 1060 (`CMAKE_CUDA_ARCHITECTURES 61`); edit that
 setting in [CMakeLists.txt](CMakeLists.txt) for another GPU architecture.
 
@@ -38,10 +49,12 @@ cmake --build build --config Release
 ctest --test-dir build -C Release --output-on-failure
 ```
 
-The executable runs **grayscale → Gaussian blur → Sobel** and writes a PNG.
-Filters are configured in C++, not through command-line flags. After initial
-configuration, `.\run-tests.ps1` rebuilds and shows a colored test summary;
-`.\run-tests.ps1 -Verbose` includes every check and build output.
+This example removes color, blurs the image slightly, then highlights its edges
+with Sobel. Open `output/pipeline.png` to see the result.
+
+To choose different filters, edit the options in [src/main.cpp](src/main.cpp)
+and rebuild. After the first setup, `.\run-tests.ps1` rebuilds and shows a short,
+colored test summary. Add `-Verbose` to see every check and the build output.
 
 [Gallery](#gallery) · [Architecture](#architecture) · [Filter status](#filter-status) ·
 [Configuration](#configure-the-pipeline) · [Benchmarks](#performance-and-methodology) ·
@@ -49,10 +62,13 @@ configuration, `.\run-tests.ps1` rebuilds and shows a colored test summary;
 
 ## Technical walkthrough
 
+Here's how the pieces fit together, what I've measured, and what's still left
+to build. The gallery is a good place to start if you're just here for the pictures.
+
 ### Gallery
 
-Outputs from this repository's kernels. Each pair uses the same source image;
-these are individual effects, not successive stages of one chain.
+These images were made with the filters in this project. Each pair shows the
+original and the result of one effect, rather than stacking all the effects together.
 
 <table>
   <tr><th colspan="2" align="center">Grayscale</th></tr>
@@ -61,7 +77,7 @@ these are individual effects, not successive stages of one chain.
     <td><img src="assets/kodim01.png" alt="Color image of a building before grayscale conversion" width="420"></td>
     <td><img src="docs/images/kodim01-grayscale.png" alt="Building after CUDA grayscale conversion" width="420"></td>
   </tr>
-  <tr><td colspan="2" align="center"><sub>Weighted RGB luminance removes color while preserving brightness detail.</sub></td></tr>
+  <tr><td colspan="2" align="center"><sub>Removes color while keeping the light and dark details.</sub></td></tr>
 </table>
 
 <table>
@@ -71,7 +87,7 @@ these are individual effects, not successive stages of one chain.
     <td><img src="docs/images/gaussian-detail-before.png" alt="Original brick detail enlarged four times" width="420"></td>
     <td><img src="docs/images/gaussian-detail-after.png" alt="Brick detail after one 3x3 Gaussian blur pass" width="420"></td>
   </tr>
-  <tr><td colspan="2" align="center"><sub>One 3×3 pass softens fine texture. The same 120×80 crop is enlarged 4× with nearest-neighbor sampling.</sub></td></tr>
+  <tr><td colspan="2" align="center"><sub>Softens the brick texture by blending each pixel with its neighbors. Both crops are enlarged 4× without extra smoothing so the difference is easier to see.</sub></td></tr>
 </table>
 
 <table>
@@ -81,7 +97,7 @@ these are individual effects, not successive stages of one chain.
     <td><img src="assets/kodim01.png" alt="Color building image before grayscale preparation and Sobel" width="420"></td>
     <td><img src="docs/images/kodim01-sobel.png" alt="Sobel output highlighting building edges" width="420"></td>
   </tr>
-  <tr><td colspan="2" align="center"><sub>Grayscale preparation followed by Sobel reveals strong brightness transitions.</sub></td></tr>
+  <tr><td colspan="2" align="center"><sub>Finds edges where brightness changes quickly, making windows, bricks, and outlines stand out. The image is converted to grayscale first.</sub></td></tr>
 </table>
 
 <table>
@@ -91,7 +107,7 @@ these are individual effects, not successive stages of one chain.
     <td><img src="docs/images/stars-original.png" alt="Original star field" width="420"></td>
     <td><img src="docs/images/stars-heart-bokeh.png" alt="Star field with additive heart-shaped highlights" width="420"></td>
   </tr>
-  <tr><td colspan="2" align="center"><sub>A 21×20 heart aperture spreads bright highlights. Threshold: 200; intensity: 0.05. This is an additive 2D effect.</sub></td></tr>
+  <tr><td colspan="2" align="center"><sub>Spreads bright pixels into little hearts using a 21×20 heart-shaped mask. Settings: brightness threshold 200, effect strength 0.05.</sub></td></tr>
 </table>
 
 [Full blur input](assets/kodim01.png) · [Full blur output](docs/images/kodim01-gaussian-blur.png).
@@ -99,36 +115,55 @@ Sharpen is implemented and tested; its gallery comparison is still to come.
 
 ### Architecture
 
-The central design question is how much work can be done between a single
-upload and download. A fast kernel alone does not guarantee a faster application:
-for grayscale, transfers dominate the recorded GPU time.
+An image lives in the computer's main memory when it is loaded. To process it
+on the GPU, I first copy it into GPU memory. Once the filters finish, I copy it
+back so it can be saved.
+
+On a discrete graphics card like the GTX 1060, the CPU and GPU have separate
+memory. These copies travel over **PCIe**, the connection between the graphics
+card and the rest of the computer. That connection has limited bandwidth, and
+each transfer also has setup overhead. Reading pixels already in GPU memory
+avoids another trip across PCIe.
+
+The 1960×1960 test image has three one-byte color channels per pixel, so each
+copy moves **11,524,800 bytes (about 11 MiB)** of uncompressed pixel data. A small
+JPEG file still expands to this full pixel array when loaded.
+
+Doing those copies after every filter would add unnecessary work. Instead, the
+image stays on the GPU until the whole chain is done. A GPU filter function is
+called a **kernel**; this diagram shows the three used by the example program.
 
 ```mermaid
 flowchart LR
-    H[Host RGB image] -->|Upload once| A[Device buffer A]
+    H[Image in main memory] -->|Copy to GPU once| A[GPU image buffer A]
     A --> G[Grayscale]
-    G --> B[Device buffer B]
+    G --> B[GPU image buffer B]
     B --> BL[Gaussian blur]
     BL --> A
     A --> E[Sobel]
     E --> B
-    B -->|Download once| O[Host output]
+    B -->|Copy back once| O[Finished image]
 ```
 
-This diagram shows the executable's default chain. Two device buffers alternate
-input and output roles after each enabled stage. Neighbor-reading kernels never
-need to overwrite their own input, and buffers are reused across calls with the
-same dimensions. Dimension changes trigger reallocation.
+The two buffers are spaces in GPU memory that hold an image. Each filter reads
+from one and writes to the other, then they swap roles. That matters for filters
+like blur: changing a pixel before its neighbors have finished reading it would
+give the wrong result. The pipeline reuses these buffers for images of the same
+size and allocates new ones when the dimensions change.
 
-The implementation includes RAII-managed device storage, a nonblocking CUDA
-stream, asynchronous copy/launch calls, CUDA-event timing, and RGB image I/O
-through stb. `process()` synchronizes before returning the host result; the
-asynchronous calls do not imply overlap between separate images.
+For the C++ details: RAII handles GPU-memory cleanup, a CUDA stream keeps copies
+and kernels in order, and CUDA events measure GPU time. The stb libraries load
+and save images. Work is submitted asynchronously, but `process()` waits for
+the finished image before returning. It does not process multiple images at once.
 
 See [pipeline orchestration](src/pipeline/image_pipeline.cu) and
 [device storage](src/core/device_image.cu).
 
 ### Filter status
+
+A CPU reference is a version of the same filter that runs on the processor.
+It gives me something to compare the GPU's pixels and speed against. A benchmark
+measures how long that work takes.
 
 | Stage | GPU implementation | CPU reference | Automated tests | Benchmark |
 |---|---|---|---|---|
@@ -136,30 +171,32 @@ See [pipeline orchestration](src/pipeline/image_pipeline.cu) and
 | Gaussian blur | Shared-memory 3×3; global baseline in benchmark | Yes | Yes | Yes |
 | Sobel | Global-memory 3×3; shared-memory comparison | Yes | Yes | Yes |
 | Heart bokeh | Shared-memory gather; global comparison | Yes | Yes | Yes |
-| Sharpen | Adjustable five-point stencil, per RGB channel | Planned | Yes | Planned |
+| Sharpen | Center pixel and four neighbors, adjustable strength | Planned | Yes | Planned |
 | Resize | Placeholder only | Planned | Planned | Planned |
 
-Sobel reads grayscale intensity and writes RGB output. Its benchmark performs
-untimed grayscale preparation for color input; when configuring a pipeline,
-enable grayscale before Sobel if that is the intended effect.
+Sobel looks for changes in brightness. Enable grayscale before it when using
+color photos. The Sobel benchmark handles that conversion before timing begins.
 
 Sharpen uses `center + strength * (4 * center - north - south - east - west)`.
-Neighbor coordinates clamp to the image boundary, and output values clamp to
-0–255. Zero strength preserves the input.
+In other words, sharpen makes a pixel's difference from its neighbors stronger.
+At an image edge, it reuses the nearest valid pixel. The result stays within
+0–255, the range each red, green, or blue value can hold. Strength zero leaves
+the image unchanged.
 
 ### Configure the pipeline
 
-The stage order is fixed; options enable or disable stages:
+You can switch filters on and off. Enabled filters always run in this order:
 
 ```text
 Grayscale → Gaussian blur → Heart bokeh → Sobel → Sharpen
 ```
 
-The API defaults enable grayscale and Gaussian blur. The executable additionally
-enables Sobel in [src/main.cpp](src/main.cpp). Its two optional arguments are
-input/output paths, defaulting to `assets/lena.jpg` and `output/lena_pipeline.png`.
+Creating `PipelineOptions` enables grayscale and blur by default. The example
+program also enables Sobel in [src/main.cpp](src/main.cpp). When running the
+program, the first argument is the input file and the second is where to save
+the result. Leave them out to use `assets/lena.jpg` and `output/lena_pipeline.png`.
 
-For a color-preserving sharpen pass:
+For example, these settings sharpen an image while keeping its color:
 
 ```cpp
 PipelineOptions options;
@@ -175,19 +212,18 @@ HostImage output = pipeline.process(input);
 For heart bokeh, use the same disabled grayscale/blur settings, enable
 `options.heartBokeh`, and set `bokehThreshold = 200` and `bokehIntensity = 0.05f`.
 Bokeh intensity must be finite and in [0, 1]. Bokeh and sharpen default to disabled.
-Resize currently throws when enabled; it still needs a kernel and output-buffer
-allocation for the requested dimensions.
+Resize is next on the list. Enabling it currently produces an error because
+the resizing code and differently sized output buffers are not implemented yet.
 
 ### Performance and methodology
 
-The tables below preserve recorded measurements; they are not a live benchmark
-or a claim about every GPU. The summary uses a GTX 1060 3GB, CUDA 12.9, Release
-build, a 1960×1960 RGB image (10.991 MiB), and averages over 20 runs. CPU references
-are single-threaded; all compared CPU/GPU outputs matched byte-for-byte.
-The bokeh workload sweep includes additional hardware and timing details below.
+Here are the recorded results on a GTX 1060 3GB using CUDA 12.9 and a Release
+build. The first table averages 20 runs on a 1960×1960 RGB image (10.991 MiB).
+Each CPU version uses one thread, and the CPU and GPU results matched exactly,
+byte for byte. Your timings will depend on your hardware and the image.
 
-**Scope:** these are per-filter results. A full pipeline versus repeated host
-round-trips benchmark is still planned. Sharpen has no recorded benchmark yet.
+Each row measures one filter. I still need to measure the full chain against
+running filters separately, and add a benchmark for sharpen.
 
 #### Individual-filter timings
 
@@ -198,12 +234,19 @@ round-trips benchmark is still planned. Sharpen has no recorded benchmark yet.
 | Sobel edges | 28.501 ms | 0.625 ms | 45.588x | 10.032 ms | 2.841x |
 | Heart bokeh | 2036.950 ms | 9.669 ms | 210.658x | 17.918 ms | 113.679x |
 
-“Compute speedup” compares only the algorithm running on the CPU or GPU.
-“End-to-end” includes upload, kernel execution, download, and synchronization.
-This distinction explains why the tiny grayscale kernel is much faster in
-isolation but slower once transfers are included.
+**Compute speedup** measures just the pixel-processing work. **End-to-end** also
+counts copying the image to the GPU, copying it back, and waiting for completion.
+It excludes loading and saving files. Larger speedup numbers are better; a value
+below 1 means the GPU took longer.
+
+Grayscale is a useful example: its GPU calculation is fast, but copying the image
+takes enough time that the CPU finishes the whole job sooner.
 
 #### Global vs. shared memory
+
+Global memory holds the full image. Shared memory is a small workspace that a
+group of GPU threads can use together. For filters that repeatedly read the same
+nearby pixels, loading those pixels into shared memory can save work.
 
 | Filter | Global memory | Shared memory | Result |
 |---|---:|---:|---|
@@ -217,15 +260,19 @@ across neighboring threads; Sobel reads one channel from a small 3x3 neighborhoo
 Cache reuse and tile-loading/synchronization overhead are plausible explanations
 for the difference, but these timings alone do not establish the cause.
 
-The benchmark result therefore drives the production choice: Gaussian blur uses
-the shared-memory implementation, while Sobel uses the global-memory version.
-The slower Sobel implementation remains available as a documented experiment.
+Based on these results, the pipeline uses shared memory for Gaussian blur and
+global memory for Sobel. Both Sobel versions stay in the project so the comparison
+can be repeated.
 
 Bokeh uses shared memory as well: overlapping source reads and repeated
 luminance checks are replaced by cooperative tile loading and thresholding.
 Its global-memory launcher remains available for comparison.
 
 #### Transfer costs
+
+Here, **upload** means main memory → GPU memory, and **download** means GPU
+memory → main memory. These are local memory copies, not network transfers.
+All times below are in milliseconds (1 ms is one thousandth of a second).
 
 | Filter | Upload | Kernel | Download | Transfer share of measured components |
 |---|---:|---:|---:|---:|
@@ -234,10 +281,29 @@ Its global-memory launcher remains available for comparison.
 | Sobel edges | 4.668 ms | 0.625 ms | 4.280 ms | 93.469% |
 | Heart bokeh | 4.590 ms | 9.669 ms | 4.279 ms | 47.839% |
 
-Transfer costs motivate the pipeline design: combining stages pays for one
-upload and one download while doing more work between them. The transfer-share
-column uses upload plus download divided by the sum of the three listed timings;
-those components are measured separately from end-to-end wall time.
+For grayscale, upload plus download is **4.492 + 4.305 = 8.797 ms**. That's
+about **20 times the 0.433 ms kernel time**, and roughly **95%** of the three
+measured components combined. The GPU finishes the arithmetic quickly; most
+of the time goes into getting the pixels there and back.
+
+This is why the pipeline keeps intermediate results on the GPU:
+
+| Three filters applied to one image | Full-image copies across PCIe |
+|---|---:|
+| Upload and download around each filter | 6: three uploads + three downloads |
+| Keep the image on the GPU between filters | 2: one upload + one download |
+
+As a rough illustration, using the grayscale transfer timings for each copy
+would give **26.4 ms of transfers** for three separate filters versus **8.8 ms**
+for one chain. That's about **17.6 ms of copying avoided**. This is an estimate
+from the individual-filter measurements, not a measured full-pipeline speedup.
+The kernels still read and write GPU memory between stages.
+
+The transfer-share column uses upload plus download divided by the sum of the
+three listed timings. Those components are measured separately from end-to-end
+wall time, so their sum need not equal the end-to-end result exactly. These
+numbers describe this implementation and machine; they are not PCIe's maximum
+bandwidth or a fixed cost for every image.
 
 Results vary by GPU, CPU, image dimensions, compiler, clock behavior, and system
 load. The benchmark executables accept any supported image so results can be
@@ -341,9 +407,11 @@ functions can contain multiple assertions and input combinations.
 | Heart bokeh GPU | 2 | CPU agreement across input combinations and launchers, invalid arguments |
 | Sharpen | 6 | 1×1 image, solid colors, known output, both clamp limits, zero strength |
 
-Small hand-calculated images make expected results inspectable. Dimensions such
-as 17×19 exercise partial 16×16 thread blocks. CPU-reference comparisons cover
-larger patterns for the four filters with reference implementations.
+For small images, I can calculate the expected pixels by hand and check the exact
+answer. A 17×19 image also checks what happens when the image doesn't divide
+evenly into the GPU's 16×16 groups of threads. For larger patterns, four filters
+have CPU versions to compare against. This helps catch mistakes that are easy
+to miss by looking at a photo.
 
 ```powershell
 # Rebuild, then show the short colored summary.
@@ -382,14 +450,14 @@ CudaLearning/
 └── output/             Generated result images (ignored)
 ```
 
-The [learning archive](learning/README.md) preserves the progression from vector
-addition and standalone image kernels to the current library. It is separate
-from the main CMake build.
+I kept the original exercises in [learning/](learning/README.md), from adding
+vectors to the first standalone image filters. They show where the project
+started and can be built separately from the current pipeline.
 
 ### Roadmap
 
-- **Next:** nearest-neighbor resize, dimension-aware pipeline allocation, and tests.
+- **Next:** basic nearest-neighbor resize, buffers for the new image size, and tests.
 - **Sharpen:** CPU reference, benchmark, and a before/after gallery comparison.
-- **Measurement:** complete pipeline versus isolated filter calls; bokeh block-shape profiling.
+- **Measurement:** compare a full filter chain with running filters separately; try different bokeh thread-group shapes.
 - **Exploration:** bilinear resize, pinned host memory, kernel fusion, and CUDA Graphs.
 - **Portability:** Linux build verification and GPU-backed CI.
