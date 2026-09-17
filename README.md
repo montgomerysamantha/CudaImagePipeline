@@ -1,6 +1,10 @@
 <div align="center">
 
 # ⋆｡°✩  CUDA Image Pipeline  ✩°｡⋆
+[![C++17](https://img.shields.io/badge/C%2B%2B-17-00599C?logo=cplusplus)](https://isocpp.org/)
+[![CUDA](https://img.shields.io/badge/CUDA-12.9-76B900?logo=nvidia&logoColor=white)](https://developer.nvidia.com/cuda-toolkit)
+[![CMake](https://img.shields.io/badge/CMake-3.22%2B-064F8C?logo=cmake)](https://cmake.org/)
+[![Tests](https://img.shields.io/badge/tests-58_checks-76B900)](docs/technical.md#correctness-and-test-coverage)
 
 ### A GPU image processing pipeline built for correctness and performance
 
@@ -13,11 +17,6 @@ Think of the CPU as a few versatile chefs who can handle complicated recipes and
 In this project, that movement means transferring images between the computer’s main memory and graphics card over PCI Express. Those transfers can take longer than the image processing itself. The pipeline keeps images on the GPU between effects, checks that the results are correct, and measures both processing speed and total execution time.
 
 The [technical guide](docs/technical.md) explores where the GPU wins, where transfer costs erase its advantage, and which performance explanations still need further investigation.
-
-[![C++17](https://img.shields.io/badge/C%2B%2B-17-00599C?logo=cplusplus)](https://isocpp.org/)
-[![CUDA](https://img.shields.io/badge/CUDA-12.9-76B900?logo=nvidia&logoColor=white)](https://developer.nvidia.com/cuda-toolkit)
-[![CMake](https://img.shields.io/badge/CMake-3.22%2B-064F8C?logo=cmake)](https://cmake.org/)
-[![Tests](https://img.shields.io/badge/tests-58_checks-76B900)](docs/technical.md#correctness-and-test-coverage)
 
 [See it](#from-stars-to-hearts) · [Run it](#try-it) · [Under the hood](docs/technical.md)
 
