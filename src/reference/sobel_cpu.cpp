@@ -52,9 +52,9 @@ SobelGradients calculateGradients(
 {
     SobelGradients gradients{0, 0};
 
-    for (int dy = -1; dy <= 1; ++dy)
+    for (int dy = -1; dy <= 1; dy++)
     {
-        for (int dx = -1; dx <= 1; ++dx)
+        for (int dx = -1; dx <= 1; dx++)
         {
             const int neighborIndex =
                 ((y + dy) * input.width + (x + dx)) * 3;
@@ -101,9 +101,9 @@ void sobel(ConstImageView input, ImageView output)
 {
     validateRgbPair(input, output);
 
-    for (int y = 0; y < input.height; ++y)
+    for (int y = 0; y < input.height; y++)
     {
-        for (int x = 0; x < input.width; ++x)
+        for (int x = 0; x < input.width; x++)
         {
             const int outputIndex = (y * input.width + x) * 3;
 

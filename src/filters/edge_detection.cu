@@ -51,9 +51,9 @@ __device__  SobelGradients getGxGyValues(
     int gx = 0;
     int gy = 0;
 
-    for (int dy = -1; dy <= 1; ++dy)
+    for (int dy = -1; dy <= 1; dy++)
     {
-        for (int dx = -1; dx <= 1; ++dx)
+        for (int dx = -1; dx <= 1; dx++)
         {
             const int neighborX = x + dx;
             const int neighborY = y + dy;
@@ -141,9 +141,9 @@ __device__ SobelGradients getSharedGradients(
     int gx = 0;
     int gy = 0;
 
-    for (int dy = -1; dy <= 1; ++dy)
+    for (int dy = -1; dy <= 1; dy++)
     {
-        for (int dx = -1; dx <= 1; ++dx)
+        for (int dx = -1; dx <= 1; dx++)
         {
             const int gray = tile[sharedY + dy][sharedX + dx];
 

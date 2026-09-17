@@ -11,6 +11,7 @@ struct PipelineOptions
     bool gaussianBlur = true;
     bool edgeDetection = false;
     bool sharpen = false;
+    // Resize runs last, after all filters at the input dimensions.
     bool resize = false;
 
     float sharpenStrength = 1.0f;
@@ -47,6 +48,7 @@ private:
     PipelineOptions options_;
     DeviceImage bufferA_;
     DeviceImage bufferB_;
+    DeviceImage resizedBuffer_;
     cudaStream_t stream_ = nullptr;
     int bufferWidth_ = 0;
     int bufferHeight_ = 0;

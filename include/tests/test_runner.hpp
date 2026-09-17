@@ -21,7 +21,7 @@ public:
             std::cout << "FAIL\n";
             throw;
         }
-        ++passed_;
+        passed_++;
         std::cout << "PASS\n";
     }
 

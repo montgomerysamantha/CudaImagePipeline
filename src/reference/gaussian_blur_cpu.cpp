@@ -34,9 +34,9 @@ void blurPixel(
     int sums[3] = {0, 0, 0};
     int weightSum = 0;
 
-    for (int dy = -1; dy <= 1; ++dy)
+    for (int dy = -1; dy <= 1; dy++)
     {
-        for (int dx = -1; dx <= 1; ++dx)
+        for (int dx = -1; dx <= 1; dx++)
         {
             const int neighborX = x + dx;
             const int neighborY = y + dy;
@@ -51,7 +51,7 @@ void blurPixel(
             const int neighborIndex =
                 (neighborY * input.width + neighborX) * 3;
 
-            for (int channel = 0; channel < 3; ++channel)
+            for (int channel = 0; channel < 3; channel++)
             {
                 sums[channel] += input.data[neighborIndex + channel] * weight;
             }
@@ -62,7 +62,7 @@ void blurPixel(
 
     const int outputIndex = (y * input.width + x) * 3;
 
-    for (int channel = 0; channel < 3; ++channel)
+    for (int channel = 0; channel < 3; channel++)
     {
         output.data[outputIndex + channel] =
             static_cast<unsigned char>(sums[channel] / weightSum);
@@ -78,9 +78,9 @@ void gaussianBlur(ConstImageView input, ImageView output)
 {
     validateRgbPair(input, output);
 
-    for (int y = 0; y < input.height; ++y)
+    for (int y = 0; y < input.height; y++)
     {
-        for (int x = 0; x < input.width; ++x)
+        for (int x = 0; x < input.width; x++)
         {
             blurPixel(x, y, input, output);
         }

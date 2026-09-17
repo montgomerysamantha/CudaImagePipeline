@@ -63,9 +63,9 @@ HostImage makeGeneratedRgbImage(
         static_cast<std::size_t>(width) * height * 3
     );
 
-    for (int y = 0; y < height; ++y)
+    for (int y = 0; y < height; y++)
     {
-        for (int x = 0; x < width; ++x)
+        for (int x = 0; x < width; x++)
         {
             const RgbPixel pixel = generatePixel(x, y);
             const int index = (y * width + x) * 3;

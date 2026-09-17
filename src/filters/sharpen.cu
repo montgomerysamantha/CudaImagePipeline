@@ -44,7 +44,7 @@ __global__ void sharpenKernel(
     }
 
     const int index = (y * width + x) * 3;
-    for (int channel = 0; channel < 3; ++channel)
+    for (int channel = 0; channel < 3; channel++)
     {
         output[index + channel] = calculateNeighborhood(
             x, y, width, height, input, channel, strength);

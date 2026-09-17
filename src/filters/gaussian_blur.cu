@@ -29,7 +29,7 @@ __global__ void gaussianBlurKernel(
             const int globalX = blockIdx.x * blockDim.x + tileX - radius;
             const int globalY = blockIdx.y * blockDim.y + tileY - radius;
 
-            for (int channel = 0; channel < 3; ++channel)
+            for (int channel = 0; channel < 3; channel++)
             {
                 unsigned char value = 0;
                 if (globalX >= 0 && globalX < width && globalY >= 0 && globalY < height)
@@ -57,9 +57,9 @@ __global__ void gaussianBlurKernel(
 
     int sums[3] = {0, 0, 0};
     int weightSum = 0;
-    for (int dy = -radius; dy <= radius; ++dy)
+    for (int dy = -radius; dy <= radius; dy++)
     {
-        for (int dx = -radius; dx <= radius; ++dx)
+        for (int dx = -radius; dx <= radius; dx++)
         {
             const int neighborX = x + dx;
             const int neighborY = y + dy;
@@ -69,7 +69,7 @@ __global__ void gaussianBlurKernel(
             }
 
             const int weight = weights[dy + radius][dx + radius];
-            for (int channel = 0; channel < 3; ++channel)
+            for (int channel = 0; channel < 3; channel++)
             {
                 sums[channel] += tile[threadIdx.y + radius + dy]
                                      [threadIdx.x + radius + dx][channel] * weight;
@@ -79,7 +79,7 @@ __global__ void gaussianBlurKernel(
     }
 
     const int outputIndex = (y * width + x) * 3;
-    for (int channel = 0; channel < 3; ++channel)
+    for (int channel = 0; channel < 3; channel++)
     {
         output[outputIndex + channel] =
             static_cast<unsigned char>(sums[channel] / weightSum);

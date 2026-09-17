@@ -62,7 +62,7 @@ void testKnownVerticalEdge()
     HostImage expected =
         test::makeSolidRgbImage(5, 5, {0, 0, 0});
 
-    for (int y = 1; y < 4; ++y)
+    for (int y = 1; y < 4; y++)
     {
         test::setGrayscalePixel(expected, 1, y, 255);
         test::setGrayscalePixel(expected, 2, y, 255);
@@ -115,9 +115,9 @@ void testBorderPixelsAreBlack()
     const auto requireBlackBorder =
         [](const HostImage& image, const std::string& testName)
         {
-            for (int y = 0; y < image.height; ++y)
+            for (int y = 0; y < image.height; y++)
             {
-                for (int x = 0; x < image.width; ++x)
+                for (int x = 0; x < image.width; x++)
                 {
                     const bool isBorder =
                         x == 0 || y == 0 ||

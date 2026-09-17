@@ -29,7 +29,7 @@ void grayscale(ConstImageView input, ImageView output)
 
     const int pixelCount = input.width * input.height;
 
-    for (int pixel = 0; pixel < pixelCount; ++pixel)
+    for (int pixel = 0; pixel < pixelCount; pixel++)
     {
         const int index = pixel * 3;
         const int red = input.data[index];

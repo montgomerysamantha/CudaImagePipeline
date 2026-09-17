@@ -79,7 +79,7 @@ float averageCpu(int runs, Function function)
 
     float totalMs = 0.0f;
 
-    for (int run = 0; run < runs; ++run)
+    for (int run = 0; run < runs; run++)
     {
         totalMs += timeCpu(function);
     }
@@ -102,7 +102,7 @@ float averageCuda(
 
     float totalMs = 0.0f;
 
-    for (int run = 0; run < runs; ++run)
+    for (int run = 0; run < runs; run++)
     {
         totalMs += timeCuda(stream, function);
     }

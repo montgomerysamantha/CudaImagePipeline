@@ -29,7 +29,7 @@ That makes avoiding unnecessary copies just as important as writing a fast kerne
 | Heart effect vs. the CPU version using one thread | **113.7x faster, including image transfers** |
 | Gaussian blur vs. the CPU version using one thread | **68.8x faster processing · 6.0x including transfers** |
 | Heart effect with pixels shared between nearby GPU threads | **2.88x faster processing** |
-| Automated checks | **31 test functions in 7 test programs** |
+| Automated checks | **57 test functions in 9 test programs** |
 
 These numbers average 20 runs on a 1960×1960 color image using CUDA 12.9 and a
 Release build. Each filter was measured separately; measuring the complete
@@ -172,7 +172,7 @@ A benchmark measures how long that work takes.
 | Sobel | Global-memory 3×3; shared-memory comparison | Yes | Yes | Yes |
 | Heart bokeh | Shared-memory gather; global comparison | Yes | Yes | Yes |
 | Sharpen | Center pixel and four neighbors, adjustable strength | Planned | Yes | Planned |
-| Resize | Placeholder only | Planned | Planned | Planned |
+| Resize | Nearest-neighbor sampling with destination-sized pipeline buffer | Planned | Yes | Planned |
 
 Sobel looks for changes in brightness. Enable grayscale before it when using
 color photos. The Sobel benchmark handles that conversion before timing begins.
@@ -188,7 +188,7 @@ the image unchanged.
 You can switch filters on and off. Enabled filters always run in this order:
 
 ```text
-Grayscale → Gaussian blur → Heart bokeh → Sobel → Sharpen
+Grayscale → Gaussian blur → Heart bokeh → Sobel → Sharpen → Resize
 ```
 
 Creating `PipelineOptions` enables grayscale and blur by default. The example
@@ -212,8 +212,28 @@ HostImage output = pipeline.process(input);
 For heart bokeh, use the same disabled grayscale/blur settings, enable
 `options.heartBokeh`, and set `bokehThreshold = 200` and `bokehIntensity = 0.05f`.
 Bokeh intensity must be finite and in [0, 1]. Bokeh and sharpen default to disabled.
-Resize is next on the list. Enabling it currently produces an error because
-the resizing code and differently sized output buffers are not implemented yet.
+To resize, set these options before constructing the pipeline:
+
+```cpp
+options.resize = true;
+options.outputWidth = 640;
+options.outputHeight = 480;
+```
+
+Both target dimensions must be positive when resize is enabled. When disabled,
+they are ignored. Resize runs after sharpen and copies each selected pixel's RGB
+channels using `sourceX = floor(outputX * inputWidth / outputWidth)` and the
+same rule for Y. For example, `[A B C]` becomes `[A A B B C]` at width five.
+It repeats or skips pixels without averaging; it does not automatically preserve
+aspect ratio or apply antialiasing when shrinking.
+
+The pipeline keeps its two filter buffers at the input dimensions and reuses a
+third buffer for the resized output. The host output matches the destination
+shape, and pipeline processing timings include resize.
+
+`HostImage::allocate(width, height, channels)` prepares CPU pixel storage and
+validates dimensions and size limits. It preserves existing bytes when possible;
+it does not resample an image. Direct field assignment remains supported.
 
 ### Performance and methodology
 
@@ -394,7 +414,7 @@ overwrite outputs. Loading and saving images are excluded from timed work.
 
 ### Correctness and test coverage
 
-**31 test functions in 7 executables.** CTest counts each executable as one test;
+**57 test functions in 9 executables.** CTest counts each executable as one test;
 functions can contain multiple assertions and input combinations.
 
 | Suite | Functions | Coverage |
@@ -402,10 +422,12 @@ functions can contain multiple assertions and input combinations.
 | Grayscale | 4 | Known RGB values, grayscale identity, partial blocks, invalid shapes |
 | Gaussian blur | 5 | Solid colors, known impulse, CPU agreement, 1×1 image, invalid shapes |
 | Sobel | 5 | Flat image, known edge, black borders, global/shared agreement, invalid shapes |
-| Pipeline | 7 | Disabled stages, stage ordering, bokeh integration, buffer reuse/reallocation, invalid input |
+| Pipeline | 13 | Disabled stages, bokeh/sharpen/resize ordering, buffer reuse/reallocation, resize settings, invalid input |
 | Heart bokeh CPU | 2 | Zero intensity, impulse geometry, clipping, saturation, argument validation |
 | Heart bokeh GPU | 2 | CPU agreement across input combinations and launchers, invalid arguments |
 | Sharpen | 6 | 1×1 image, solid colors, known output, both clamp limits, zero strength |
+| Resize | 12 | Horizontal/vertical enlargement, shrinking, same shape, 2D mapping, one-pixel cases, invalid views |
+| HostImage | 8 | Defaults, views, copies, manual setup, allocation/reallocation, rejected requests preserve contents |
 
 Small images allow hand-calculated expected pixels to be checked against the exact
 output. A 17×19 image also checks what happens when the image doesn't divide
@@ -422,6 +444,10 @@ to miss by looking at a photo.
 
 # Run only sharpen using the existing build.
 ctest --test-dir build -C Release -R "^sharpen$" --output-on-failure
+
+# Build resize tests, then display every registered test function.
+cmake --build build --config Release --target test_resize
+ctest --test-dir build -C Release -R "^resize$" -V
 ```
 
 The PowerShell runner stops on build failure and preserves CTest's exit code.
@@ -452,7 +478,7 @@ CudaLearning/
 
 ### Roadmap
 
-- **Next:** basic nearest-neighbor resize, buffers for the new image size, and tests.
+- **Completed:** nearest-neighbor resize, reusable destination buffer, and standalone/pipeline tests.
 - **Sharpen:** CPU reference, benchmark, and a before/after gallery comparison.
 - **Measurement:** compare a full filter chain with running filters separately; try different bokeh thread-group shapes.
 - **Exploration:** bilinear resize, pinned host memory, kernel fusion, and CUDA Graphs.

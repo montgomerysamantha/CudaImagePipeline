@@ -51,6 +51,10 @@ ConstImageView readView(const DeviceImage& image)
 ImagePipeline::ImagePipeline(PipelineOptions options)
     : options_(options)
 {
+    if (options_.resize && (options_.outputWidth <= 0 || options_.outputHeight <= 0))
+    {
+        throw std::invalid_argument("Resize output dimensions must be positive");
+    }
     if (options_.heartBokeh &&
         (!std::isfinite(options_.bokehIntensity) ||
          options_.bokehIntensity < 0 || options_.bokehIntensity > 1))
@@ -92,18 +96,25 @@ HostImage ImagePipeline::process(const HostImage& input, PipelineTimings* timing
 
     if (options_.resize)
     {
-        // Resize changes buffer dimensions and therefore needs a third/differently-sized
-        // allocation. This guard remains until the resize extension point is implemented.
-        throw std::logic_error("Resize is enabled but its pipeline allocation is not implemented yet");
+        // Keep this independent of the input-size cache: A/B retain their
+        // original dimensions, while this buffer owns the final output shape.
+        const auto resizedView = resizedBuffer_.view();
+        if (resizedView.width != options_.outputWidth ||
+            resizedView.height != options_.outputHeight ||
+            resizedView.channels != input.channels)
+        {
+            resizedBuffer_.allocate(options_.outputWidth, options_.outputHeight, input.channels);
+        }
     }
 
     ensureBuffers(input.width, input.height, input.channels);
 
     HostImage output;
-    output.width = input.width;
-    output.height = input.height;
-    output.channels = input.channels;
-    output.pixels.resize(input.pixels.size());
+    output.allocate(
+        options_.resize ? options_.outputWidth : input.width,
+        options_.resize ? options_.outputHeight : input.height,
+        input.channels
+    );
 
     Event start;
     Event uploaded;
@@ -147,6 +158,12 @@ HostImage ImagePipeline::process(const HostImage& input, PipelineTimings* timing
     {
         launchSharpen(readView(*current), next->view(), options_.sharpenStrength, stream_);
         advance();
+    }
+
+    if (options_.resize)
+    {
+        launchResize(readView(*current), resizedBuffer_.view(), stream_);
+        current = &resizedBuffer_;
     }
 
     CUDA_CHECK(cudaEventRecord(processed, stream_));
