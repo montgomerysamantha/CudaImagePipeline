@@ -6,9 +6,11 @@
 
 This C++ and CUDA project explores whether an NVIDIA graphics processing unit (**GPU**) can apply image effects faster than the computer’s general-purpose processor (**CPU**). A high-resolution image contains millions of pixels. Applying similar calculations to each one creates many small jobs that can run at once—work that often suits a GPU.
 
-**How are CPUs and GPUs different?** Think of the CPU as a few versatile chefs who can handle complicated recipes and quickly switch between tasks. A GPU is like a large kitchen crew organized to perform similar steps on thousands of dishes. For repetitive work like processing pixels, that larger team can finish sooner—but moving ingredients into its kitchen and bringing the finished dishes back takes time.
+### How are CPUs and GPUs different?
+Think of the CPU as a few versatile chefs who can handle complicated recipes and quickly switch between tasks. A GPU is like a large kitchen crew organized to perform similar steps on thousands of dishes. For repetitive work like processing pixels, that larger team can finish sooner—but moving ingredients into its kitchen and bringing the finished dishes back takes time.
 
-**So when does GPU acceleration actually pay off?** In this project, that movement means transferring images between the computer’s main memory and graphics card over PCI Express. Those transfers can take longer than the image processing itself. The pipeline keeps images on the GPU between effects, checks that the results are correct, and measures both processing speed and total execution time.
+### When does GPU acceleration actually pay off?
+In this project, that movement means transferring images between the computer’s main memory and graphics card over PCI Express. Those transfers can take longer than the image processing itself. The pipeline keeps images on the GPU between effects, checks that the results are correct, and measures both processing speed and total execution time.
 
 The [technical guide](docs/technical.md) explores where the GPU wins, where transfer costs erase its advantage, and which performance explanations still need further investigation.
 
@@ -51,20 +53,18 @@ Choose your effects: **grayscale → Gaussian blur → heart bokeh → Sobel →
 Enabled filters run in that order. Images stay on the GPU between filter stages, avoiding unnecessary PCI Express transfers.
 [Explore every effect →](docs/technical.md#gallery)
 
-## 🔥 Performance, with receipts ⚡
+## 🔥 Performance highlights ⚡
 
-Measured on a vintage **GeForce GTX 1060 3GB**:
+Measured on a vintage **GeForce GTX 1060 3GB**.
 
 | What changed | What happened |
 |---|---|
 | Keep the six-stage chain on the GPU | **3.98–4.36× faster end-to-end** than transfers around each stage |
 | Run heart bokeh on the GPU | **113.7× faster end-to-end** than the single-thread CPU reference |
-| Check the details | **58 test functions · 9 suites** covering pixels, borders, buffers, and invalid inputs |
+| Tests and Benchmarks | **58 test functions · 9 suites** covering pixels, borders, buffers, and invalid inputs |
 
-Recorded means over 20 runs, CUDA 12.9, Release build. The chain sweep uses
-320×240–1920×1080 synthetic inputs; bokeh uses a 1960×1960 image. These compare
-this project's implementations, not optimized CPU libraries. Full settings,
-raw results, and timing boundaries live in the [technical guide](docs/technical.md#performance-and-methodology).
+Results recorded over 20 runs, using CUDA version 12.9 (last CUDA version supported by Pascal architecture graphics cards). Full settings,
+raw benchmark results, and timing boundaries live in the [technical guide](docs/technical.md#performance-and-methodology).
 
 ## ╰┈➤ Try it 🔨🏗️🧱
 
