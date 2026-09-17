@@ -1,8 +1,8 @@
 #include "core/image.hpp"
 #include "pipeline/image_pipeline.hpp"
 
-// The unimplemented stages intentionally remain disabled until their TODO kernels
-// and, for resize, its differently-sized device allocation have been added.
+// Sharpen is optional. Resize remains disabled until its kernel and
+// differently-sized device allocation have been implemented.
 HostImage runFullPipelineExample(const HostImage& input)
 {
     PipelineOptions options;

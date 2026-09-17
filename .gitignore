@@ -3,4 +3,8 @@
 /*.exp
 /*.lib
 /output/*.png
+/learning/*.exe
+/learning/*.exp
+/learning/*.lib
+/learning/*.obj
 

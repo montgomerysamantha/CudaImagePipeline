@@ -62,7 +62,7 @@ It is one pass of the actual 3x3 filter.
 [full blur output](docs/images/kodim01-gaussian-blur.png) are also available.
 Sobel includes grayscale preparation. Bokeh uses threshold 200 and intensity
 0.05; CPU and GPU outputs match exactly. Sharpen and resize have no gallery
-entries because they are not implemented.
+entries yet; resize is not implemented.
 
 ## Why use a pipeline?
 
@@ -120,8 +120,8 @@ need to read.
 - Automatic grayscale preparation for Sobel benchmark inputs
 - Automated GPU tests with CTest
 
-Sharpen and resize are currently documented extension points and are not yet
-implemented.
+Sharpen supports adjustable strength with clamped borders and RGB output.
+Resize remains an unimplemented extension point.
 
 ## What does Sobel edge detection do?
 
@@ -354,9 +354,12 @@ cmake --build build --config Release
 ctest --test-dir build -C Release --output-on-failure
 ```
 
-CTest currently runs six test executables, including the original filter and
-pipeline tests plus separate CPU and GPU bokeh tests:
+CTest currently runs seven test executables, including sharpen and separate
+CPU and GPU bokeh tests. For a rebuild and colored summary, run
+`.\run-tests.ps1`; add `-Verbose` for individual checks and build output.
 
+- **Sharpen:** one-pixel and solid-color preservation, known output values,
+  upper and lower clamping, and zero-strength identity
 - **Grayscale:** known RGB values, already-gray input, dimensions that create
   partial CUDA blocks, and invalid image shapes
 - **Gaussian blur:** solid-color preservation, a hand-calculated impulse
@@ -385,7 +388,11 @@ implementation inside the test.
 CudaLearning/
 |-- CMakeLists.txt
 |-- README.md
+|-- run-tests.ps1              Rebuild and run tests; optional -Verbose output
 |-- assets/                    Input images
+|-- build/                     Generated builds (ignored by Git)
+|-- learning/                  Original standalone exercises and their assets
+|-- examples/                  Current pipeline API examples
 |-- docs/images/               README output examples
 |-- include/
 |   |-- benchmarks/            Shared benchmark infrastructure
@@ -400,7 +407,8 @@ CudaLearning/
 |   |-- reference/             Independent CPU reference algorithms
 |   `-- pipeline/              One-upload, one-download orchestration
 |-- benchmarks/                CPU/GPU correctness and timing programs
-|-- tests/                     Executable tests and learning outlines
+|-- tests/                     Current automated tests
+|-- third_party/               Current pipeline's stb headers
 `-- output/                    Generated images (ignored by Git)
 ```
 
@@ -408,9 +416,9 @@ CudaLearning/
 
 - Explore alternative bokeh block shapes and profile occupancy/cache behavior
 
-- Add tests alongside the sharpen and resize implementations
+- Add tests alongside the resize implementation
 - Add nearest-neighbor and bilinear resize
-- Add a sharpen filter and compare direct convolution with unsharp masking
+- Add a sharpen CPU reference and benchmarks; compare with unsharp masking
 - Benchmark the complete multi-filter pipeline against isolated filter calls
 - Explore pinned host memory, kernel fusion, and CUDA Graphs
 - Add Linux build verification and CI on a CUDA-capable runner
