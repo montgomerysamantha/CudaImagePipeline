@@ -53,8 +53,6 @@ void testResizeBigger()
 }
 
 
-// Learning outlines: implement each body, then uncomment its runner entry.
-// Unfinished outlines are not registered, so they cannot count as passing tests.
 
 void testResizeTaller()
 {
@@ -113,28 +111,82 @@ void testResizeSmaller()
 {
     // Shrink [A B C D E] from 5 x 1 to [A B D] at 3 x 1.
 
+    // A = (255, 0, 0)
+    // B = (0, 255, 0)
+    // C = (0, 0, 255)
+    // D = (204, 45, 191)
+    // E = (246, 255, 120)
+
+    // Input:    [A B C D E]
+    // Expected: [A B D]
+
     // Arrange
-    // TODO: Choose five distinct colors and write the expected three pixels by hand.
+    constexpr int inputWidth = 5;
+    constexpr int inputHeight = 1;
+    const HostImage input = test::makeRgbImage(
+        inputWidth, inputHeight,
+        {
+            255,   0,    0,  // A
+            0,    255,   0,  // B
+            0,     0,   255, // C
+            204,  45,   191, // D
+            246,  255,  120  // E
+        }
+    );
+
+
+    constexpr int outputWidth = 3;
+    constexpr int outputHeight = 1;
+    const HostImage expected = test::makeRgbImage(
+        outputWidth, outputHeight,
+        {
+            255,   0,    0,  // A
+            0,    255,   0,  // B
+            204,  45,   191  // D
+        }
+    );
+
 
     // Act
-    // TODO: Resize to 3, 1.
+    const HostImage actual = test::runResize(input, outputWidth, outputHeight, launchResize);
 
     // Assert
-    // TODO: Compare the actual image with the expected image.
+    test::requirePixelsEqual(
+        actual,
+        expected,
+        "testResizeSmaller"
+    );
 }
 
 void testResizeSameDimensions()
 {
     // Resizing a 3 x 2 image to its original shape preserves all bytes.
-
     // Arrange
-    // TODO: Use distinct colors in both rows; expected is a copy of input.
+    constexpr int width = 3;
+    constexpr int height = 2;
+    const HostImage input = test::makeRgbImage(
+        width, height,
+        {
+            255,   0,    0,  // A
+            0,    255,   0,  // B
+            0,     0,   255, // C
+            204,  45,   191, // D
+            246,  255,  120, // E
+            7,    42,    61  // F
+        }
+    );
+
+    const HostImage expected = input;
 
     // Act
-    // TODO: Resize to the input width and height.
+    const HostImage actual = test::runResize(input, width, height, launchResize);
 
     // Assert
-    // TODO: Compare the complete images.
+    test::requirePixelsEqual(
+        actual,
+        expected,
+        "testResizeSameDimensions"
+    );
 }
 
 void testResizeBothDimensions()
@@ -142,13 +194,33 @@ void testResizeBothDimensions()
     // Resize 2 x 2 to 4 x 4: AB / CD becomes AABB / AABB / CCDD / CCDD.
 
     // Arrange
-    // TODO: Build input and expected images by hand with four distinct colors.
+    const HostImage input = test::makeRgbImage(
+        2, 2,
+        {
+            255, 0, 0,    0, 255, 0,  // A B
+            0, 0, 255,    204, 45, 191 // C D
+        }
+    );
+
+    const HostImage expected = test::makeRgbImage(
+        4, 4,
+        {
+            255, 0, 0,  255, 0, 0,  0, 255, 0,    0, 255, 0,
+            255, 0, 0,  255, 0, 0,  0, 255, 0,    0, 255, 0,
+            0, 0, 255,  0, 0, 255,  204, 45, 191, 204, 45, 191,
+            0, 0, 255,  0, 0, 255,  204, 45, 191, 204, 45, 191
+        }
+    );
 
     // Act
-    // TODO: Resize to 4, 4.
+    const HostImage actual = test::runResize(input, 4, 4, launchResize);
 
     // Assert
-    // TODO: Compare every pixel to catch row/column indexing mistakes.
+    test::requirePixelsEqual(
+        actual,
+        expected,
+        "testResizeBothDimensions"
+    );
 }
 
 void testResizeOneInputPixel()
@@ -156,13 +228,32 @@ void testResizeOneInputPixel()
     // Enlarge one RGB pixel to 17 x 19, crossing partial 16 x 16 blocks.
 
     // Arrange
-    // TODO: Create a 1 x 1 input and a solid 17 x 19 expected image of the same color.
+    constexpr int inputWidth = 1;
+    constexpr int inputHeight = 1;
+
+    const HostImage input = test::makeSolidRgbImage(
+        inputWidth,
+        inputHeight,
+        test::RgbPixel{45, 159, 224}
+    );
+
+    constexpr int outputWidth = 17;
+    constexpr int outputHeight = 19;
+    const HostImage expected = test::makeSolidRgbImage(
+        outputWidth,
+        outputHeight,
+        test::RgbPixel{45, 159, 224}
+    );
 
     // Act
-    // TODO: Resize to 17, 19.
+    const HostImage actual = test::runResize(input, outputWidth, outputHeight, launchResize);
 
     // Assert
-    // TODO: Every output pixel must have the original color.
+    test::requirePixelsEqual(
+        actual,
+        expected,
+        "testResizeOneInputPixel"
+    );
 }
 
 void testResizeOneOutputPixel()
@@ -170,27 +261,118 @@ void testResizeOneOutputPixel()
     // Shrink a distinct-color 3 x 2 image to 1 x 1.
 
     // Arrange
-    // TODO: Expected is the top-left input pixel under our floor-based mapping.
+    constexpr int inputWidth = 3;
+    constexpr int inputHeight = 2;
+    const HostImage input = test::makeRgbImage(
+        inputWidth, inputHeight,
+        {
+            255,   0,    0,  // A
+            0,    255,   0,  // B
+            0,     0,   255, // C
+            204,  45,   191, // D
+            246,  255,  120, // E
+            7,    42,    61  // F
+        }
+    );
+
+
+    constexpr int outputWidth = 1;
+    constexpr int outputHeight = 1;
+    const HostImage expected = test::makeRgbImage(
+        outputWidth, outputHeight,
+        {
+            255, 0, 0  // A
+        }
+    );
+
 
     // Act
-    // TODO: Resize to 1, 1.
+    const HostImage actual = test::runResize(input, outputWidth, outputHeight, launchResize);
 
     // Assert
-    // TODO: Compare the output shape and selected RGB value.
+    test::requirePixelsEqual(
+        actual,
+        expected,
+        "testResizeOneOutputPixel"
+    );
 }
 
-void testResizeRejectsNullPointers()
+void testResizeRejectsNullInputPointer()
 {
     // Reject null input and null output pointers independently.
 
     // Arrange
-    // TODO: Create valid separate DeviceImages and a CudaStream; get their views.
+    // Create valid separate DeviceImages and a CudaStream; get their views.
+    test::CudaStream stream;
+    DeviceImage deviceInput(3, 3, 3);
+    DeviceImage deviceOutput(3, 3, 3);
 
-    // Act
-    // TODO: Set one view's data pointer to nullptr and call launchResize directly.
+    const DeviceImage& readOnlyInput = deviceInput;
+
+    // Views contain metadata and a pointer to the device storage.
+    // Changing a view's pointer does not change the owning DeviceImage.
+    ConstImageView nullInput = readOnlyInput.view();
+    nullInput.data = nullptr;
+
+    bool nullInputWasRejected = false;
+
+    // Act: invalid input, valid output.
+    try
+    {
+        launchResize(
+            nullInput,
+            deviceOutput.view(),
+            stream.get()
+        );
+    }
+    catch (const std::invalid_argument&)
+    {
+        nullInputWasRejected = true;
+    }
 
     // Assert
-    // TODO: Catch std::invalid_argument and require rejection; repeat for the other pointer.
+    test::require(
+        nullInputWasRejected,
+        "Resize must reject a null input pointer"
+    );
+}
+
+void testResizeRejectsNullOutputPointer()
+{
+    // Reject null input and null output pointers independently.
+
+    // Arrange
+    // Create valid separate DeviceImages and a CudaStream; get their views.
+    test::CudaStream stream;
+    DeviceImage deviceInput(3, 3, 3);
+    DeviceImage deviceOutput(3, 3, 3);
+
+    const DeviceImage& readOnlyInput = deviceInput;
+
+    ImageView nullOutput = deviceOutput.view();
+    nullOutput.data = nullptr;
+
+    bool nullOutputWasRejected = false;
+
+    // Act: valid input, invalid output.
+    try
+    {
+        launchResize(
+            readOnlyInput.view(),
+            nullOutput,
+            stream.get()
+        );
+    }
+    catch (const std::invalid_argument&)
+    {
+        nullOutputWasRejected = true;
+    }
+
+    // Assert
+    test::require(
+        nullOutputWasRejected,
+        "Resize must reject a null output pointer"
+    );
 }
 
 void testResizeRejectsInvalidDimensions()
@@ -198,13 +380,42 @@ void testResizeRejectsInvalidDimensions()
     // Reject zero and negative width/height on either view.
 
     // Arrange
-    // TODO: Start each case with valid views of separate device allocations.
+    test::CudaStream stream;
+    DeviceImage deviceInput(3, 3, 3);
+    DeviceImage deviceOutput(3, 3, 3);
+    const DeviceImage& readOnlyInput = deviceInput;
 
-    // Act
-    // TODO: Change one dimension to 0 or -1, then call launchResize directly.
+    for (int invalid : {0, -1})
+    {
+        for (int dimension = 0; dimension < 4; dimension++)
+        {
+            // Reset views so only one dimension is invalid in each case.
+            ConstImageView input = readOnlyInput.view();
+            ImageView output = deviceOutput.view();
+            int* dimensions[] = {
+                &input.width, &input.height, &output.width, &output.height
+            };
+            *dimensions[dimension] = invalid;
+            bool rejected = false;
 
-    // Assert
-    // TODO: Require std::invalid_argument for each of the eight cases.
+            // Act: bypass runResize so allocation cannot reject the case first.
+            try
+            {
+                launchResize(input, output, stream.get());
+            }
+            catch (const std::invalid_argument&)
+            {
+                rejected = true;
+            }
+
+            // Assert
+            test::require(
+                rejected,
+                "Resize must reject invalid dimension " + std::to_string(dimension)
+                    + " with value " + std::to_string(invalid)
+            );
+        }
+    }
 }
 
 void testResizeRejectsNonRgbImages()
@@ -212,13 +423,46 @@ void testResizeRejectsNonRgbImages()
     // Reject non-RGB input or output independently.
 
     // Arrange
-    // TODO: Create valid separate device buffers; modify only the channel metadata.
+    test::CudaStream stream;
+    DeviceImage deviceInput(3, 3, 3);
+    DeviceImage deviceOutput(3, 3, 3);
+    const DeviceImage& readOnlyInput = deviceInput;
 
-    // Act
-    // TODO: Try channels 1 and 4 on each view using launchResize directly.
+    for (int channels : {0, 1, 4})
+    {
+        for (bool invalidInput : {true, false})
+        {
+            ConstImageView input = readOnlyInput.view();
+            ImageView output = deviceOutput.view();
+            if (invalidInput)
+            {
+                input.channels = channels;
+            }
+            else
+            {
+                output.channels = channels;
+            }
+            bool rejected = false;
 
-    // Assert
-    // TODO: Require std::invalid_argument for every case.
+            // Act
+            try
+            {
+                launchResize(input, output, stream.get());
+            }
+            catch (const std::invalid_argument&)
+            {
+                rejected = true;
+            }
+
+            // Assert
+            test::require(
+                rejected,
+                std::string("Resize must reject non-RGB ")
+                    + (invalidInput ? "input" : "output")
+                    + " with channels " + std::to_string(channels)
+            );
+        }
+    }
 }
 
 void testResizeRejectsSameStorage()
@@ -226,23 +470,28 @@ void testResizeRejectsSameStorage()
     // Reject input and output views that use the same device storage.
 
     // Arrange
-    // TODO: Create one DeviceImage; obtain const input and mutable output views.
+    test::CudaStream stream;
+    DeviceImage image(3, 3, 3);
+    const DeviceImage& readOnlyImage = image;
+    bool rejected = false;
 
     // Act
-    // TODO: Call launchResize directly with these views.
+    try
+    {
+        launchResize(readOnlyImage.view(), image.view(), stream.get());
+    }
+    catch (const std::invalid_argument&)
+    {
+        rejected = true;
+    }
 
     // Assert
-    // TODO: Require std::invalid_argument.
+    test::require(
+        rejected,
+        "Resize must reject identical input and output storage"
+    );
 }
 
-// Integration checklist (belongs in test_pipeline.cu after standalone tests):
-// TODO: Allocate a third device buffer at the destination dimensions.
-// TODO: Run resize last and download into a destination-sized HostImage.
-// TODO: Test resize alone with grayscale and blur explicitly disabled.
-// TODO: Test ordering with odd/even counts of preceding filters.
-// TODO: Test repeated calls and changing input sizes with a fixed target size.
-// TODO: Test invalid enabled resize dimensions and disabled resize behavior.
-// TODO: Build and run the full suite after integration.
 
 int main()
 {
@@ -251,19 +500,18 @@ int main()
         test::Runner runner;
 
         runner.run("Resize bigger horizontal", testResizeBigger);
-        // runner.run("testResizeTaller", testResizeTaller);
-        // runner.run("testResizeSmaller", testResizeSmaller);
-        // runner.run("testResizeSameDimensions", testResizeSameDimensions);
-        // runner.run("testResizeBothDimensions", testResizeBothDimensions);
-        // runner.run("testResizeOneInputPixel", testResizeOneInputPixel);
-        // runner.run("testResizeOneOutputPixel", testResizeOneOutputPixel);
-        // runner.run("testResizeRejectsNullPointers", testResizeRejectsNullPointers);
-        // runner.run("testResizeRejectsInvalidDimensions", testResizeRejectsInvalidDimensions);
-        // runner.run("testResizeRejectsNonRgbImages", testResizeRejectsNonRgbImages);
-        // runner.run("testResizeRejectsSameStorage", testResizeRejectsSameStorage);
+        runner.run("testResizeTaller", testResizeTaller);
+        runner.run("testResizeSmaller", testResizeSmaller);
+        runner.run("testResizeSameDimensions", testResizeSameDimensions);
+        runner.run("testResizeBothDimensions", testResizeBothDimensions);
+        runner.run("testResizeOneInputPixel", testResizeOneInputPixel);
+        runner.run("testResizeOneOutputPixel", testResizeOneOutputPixel);
+        runner.run("testResizeRejectsNullInputPointer", testResizeRejectsNullInputPointer);
+        runner.run("testResizeRejectsNullOutputPointer", testResizeRejectsNullOutputPointer);
+        runner.run("testResizeRejectsInvalidDimensions", testResizeRejectsInvalidDimensions);
+        runner.run("testResizeRejectsNonRgbImages", testResizeRejectsNonRgbImages);
+        runner.run("testResizeRejectsSameStorage", testResizeRejectsSameStorage);
 
-        // Remove this reminder once all outlines are implemented and registered.
-        std::cout << "NOTE: Commented runner entries are unfinished exercises, not passing tests.\n";
         runner.summary("Resize");
         return 0;
     }

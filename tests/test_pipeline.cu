@@ -3,6 +3,9 @@
 #include "filters/grayscale.hpp"
 #include "filters/heart_bokeh.hpp"
 #include "filters/edge_detection.hpp"
+#include "filters/resize.hpp"
+#include "filters/sharpen.hpp"
+#include <cmath>
 #include "reference/heart_bokeh_cpu.hpp"
 #include "pipeline/image_pipeline.hpp"
 #include "tests/test_utils.hpp"
@@ -292,6 +295,201 @@ void testInvalidInputIsRejected()
     );
 }
 
+void testResizeOnlyPipeline()
+{
+    // Verify destination allocation and download with no preceding filters.
+    // Arrange
+    const HostImage input = test::makeRgbImage(
+        3, 1,
+        {255, 0, 0,  0, 255, 0,  0, 0, 255}
+    );
+    const HostImage expected = test::makeRgbImage(
+        5, 1,
+        {255, 0, 0,  255, 0, 0,  0, 255, 0,  0, 255, 0,  0, 0, 255}
+    );
+
+    PipelineOptions options;
+    options.grayscale = false;
+    options.gaussianBlur = false;
+    options.resize = true;
+    options.outputWidth = 5;
+    options.outputHeight = 1;
+    ImagePipeline pipeline(options);
+    PipelineTimings timings;
+
+    // Act
+    const HostImage actual = pipeline.process(input, &timings);
+
+    // Assert
+    test::requirePixelsEqual(actual, expected, "testResizeOnlyPipeline");
+    test::require(
+        std::isfinite(timings.uploadMs) && timings.uploadMs >= 0 &&
+        std::isfinite(timings.processingMs) && timings.processingMs >= 0 &&
+        std::isfinite(timings.downloadMs) && timings.downloadMs >= 0,
+        "Resize pipeline must report finite, nonnegative timings"
+    );
+}
+
+void testResizeAfterFilters()
+{
+    // Four or five preceding stages put the final input in A or B.
+    // The direct chain verifies that resize runs after every enabled filter.
+    // Arrange
+    const HostImage input = test::makeCoordinatePatternImage(17, 19);
+
+    for (bool sharpen : {false, true})
+    {
+        PipelineOptions options;
+        options.grayscale = true;
+        options.gaussianBlur = true;
+        options.heartBokeh = true;
+        options.bokehThreshold = 77;
+        options.bokehIntensity = 0.1f;
+        options.edgeDetection = true;
+        options.sharpen = sharpen;
+        options.sharpenStrength = 0.5f;
+        options.resize = true;
+        options.outputWidth = 9;
+        options.outputHeight = 23;
+
+        const HostImage gray = test::runFilter(input, launchGrayscale);
+        const HostImage blurred = test::runFilter(gray, launchGaussianBlur);
+        const HostImage bokeh = test::runFilter(
+            blurred,
+            [&](ConstImageView in, ImageView out, cudaStream_t stream)
+            {
+                launchHeartBokeh(in, out, options.bokehThreshold, options.bokehIntensity, stream);
+            }
+        );
+        HostImage filtered = test::runFilter(bokeh, launchEdgeDetection);
+        if (sharpen)
+        {
+            filtered = test::runFilter(
+                filtered,
+                [&](ConstImageView in, ImageView out, cudaStream_t stream)
+                {
+                    launchSharpen(in, out, options.sharpenStrength, stream);
+                }
+            );
+        }
+        const HostImage expected = test::runResize(filtered, 9, 23, launchResize);
+        ImagePipeline pipeline(options);
+
+        // Act
+        const HostImage actual = pipeline.process(input);
+
+        // Assert
+        test::requirePixelsEqual(
+            actual,
+            expected,
+            sharpen ? "Resize after five filters" : "Resize after four filters"
+        );
+    }
+}
+
+void testResizeRepeatedCalls()
+{
+    // Alternate different contents at one size to catch stale output buffers.
+    // Arrange
+    const HostImage first = test::makeCoordinatePatternImage(11, 9);
+    const HostImage second = test::makeSolidRgbImage(11, 9, {25, 100, 225});
+    PipelineOptions options;
+    options.grayscale = false;
+    options.gaussianBlur = false;
+    options.resize = true;
+    options.outputWidth = 17;
+    options.outputHeight = 19;
+    ImagePipeline pipeline(options);
+
+    for (const HostImage* input : {&first, &second, &first, &second})
+    {
+        const HostImage expected = test::runResize(*input, 17, 19, launchResize);
+
+        // Act
+        const HostImage actual = pipeline.process(*input);
+
+        // Assert
+        test::requirePixelsEqual(actual, expected, "testResizeRepeatedCalls");
+    }
+}
+
+void testResizeChangingInputDimensions()
+{
+    // Keep the destination fixed while inputs grow, shrink, and match it.
+    // Arrange
+    PipelineOptions options;
+    options.grayscale = true;
+    options.gaussianBlur = false;
+    options.resize = true;
+    options.outputWidth = 17;
+    options.outputHeight = 19;
+    ImagePipeline pipeline(options);
+
+    for (const auto size : {std::pair<int, int>{3, 2}, {47, 31}, {1, 1}, {17, 19}, {3, 2}})
+    {
+        const HostImage input = test::makeCoordinatePatternImage(size.first, size.second);
+        const HostImage gray = test::runFilter(input, launchGrayscale);
+        const HostImage expected = test::runResize(gray, 17, 19, launchResize);
+
+        // Act
+        const HostImage actual = pipeline.process(input);
+
+        // Assert
+        test::requirePixelsEqual(actual, expected, "testResizeChangingInputDimensions");
+    }
+}
+
+void testResizeInvalidOutputDimensions()
+{
+    // Reject invalid targets when resize is enabled, before processing starts.
+    for (const auto size : {std::pair<int, int>{0, 5}, {-1, 5}, {5, 0}, {5, -1}})
+    {
+        // Arrange
+        PipelineOptions options;
+        options.resize = true;
+        options.outputWidth = size.first;
+        options.outputHeight = size.second;
+        bool rejected = false;
+
+        // Act
+        try
+        {
+            ImagePipeline pipeline(options);
+        }
+        catch (const std::invalid_argument&)
+        {
+            rejected = true;
+        }
+
+        // Assert
+        test::require(rejected, "Enabled resize must reject nonpositive target dimensions");
+    }
+}
+
+void testDisabledResizeIgnoresOutputDimensions()
+{
+    // Both invalid and valid target sizes must be ignored when resize is off.
+    // Arrange
+    const HostImage input = test::makeCoordinatePatternImage(3, 2);
+    for (const auto size : {std::pair<int, int>{0, -1}, {17, 19}})
+    {
+        PipelineOptions options;
+        options.grayscale = false;
+        options.gaussianBlur = false;
+        options.resize = false;
+        options.outputWidth = size.first;
+        options.outputHeight = size.second;
+        ImagePipeline pipeline(options);
+
+        // Act
+        const HostImage actual = pipeline.process(input);
+
+        // Assert
+        test::requirePixelsEqual(actual, input, "testDisabledResizeIgnoresOutputDimensions");
+    }
+}
+
+
 int main()
 {
     try
@@ -304,6 +502,12 @@ int main()
         runner.run("testRepeatedProcessCalls", testRepeatedProcessCalls);
         runner.run("testBufferReallocationForNewDimensions", testBufferReallocationForNewDimensions);
         runner.run("testInvalidInputIsRejected", testInvalidInputIsRejected);
+        runner.run("testResizeOnlyPipeline", testResizeOnlyPipeline);
+        runner.run("testResizeAfterFilters", testResizeAfterFilters);
+        runner.run("testResizeRepeatedCalls", testResizeRepeatedCalls);
+        runner.run("testResizeChangingInputDimensions", testResizeChangingInputDimensions);
+        runner.run("testResizeInvalidOutputDimensions", testResizeInvalidOutputDimensions);
+        runner.run("testDisabledResizeIgnoresOutputDimensions", testDisabledResizeIgnoresOutputDimensions);
         runner.summary("Pipeline");
         return 0;
     }
