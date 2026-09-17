@@ -37,79 +37,13 @@ These are measurements from one machine and workload, not universal performance 
 
 The gallery shows each effect independently rather than stacking every filter together.
 
-<table>
-  <tr>
-    <th colspan="2" align="center">Grayscale</th>
-  </tr>
-  <tr>
-    <th align="center">Before</th>
-    <th align="center">After</th>
-  </tr>
-  <tr>
-    <td>
-      <img src="assets/kodim01.png" alt="Original color image before grayscale conversion" width="420">
-    </td>
-    <td>
-      <img src="docs/images/kodim01-grayscale.png" alt="Grayscale result" width="420">
-    </td>
-  </tr>
-</table>
-
-<table>
-  <tr>
-    <th colspan="2" align="center">Gaussian blur</th>
-  </tr>
-  <tr>
-    <th align="center">Before</th>
-    <th align="center">After</th>
-  </tr>
-  <tr>
-    <td>
-      <img src="docs/images/gaussian-detail-before.png" alt="Original brick detail before blur" width="420">
-    </td>
-    <td>
-      <img src="docs/images/gaussian-detail-after.png" alt="Gaussian blur result" width="420">
-    </td>
-  </tr>
-</table>
-
-<table>
-  <tr>
-    <th colspan="2" align="center">Sobel edge detection</th>
-  </tr>
-  <tr>
-    <th align="center">Before</th>
-    <th align="center">After</th>
-  </tr>
-  <tr>
-    <td>
-      <img src="assets/kodim01.png" alt="Original color image before Sobel edge detection" width="420">
-    </td>
-    <td>
-      <img src="docs/images/kodim01-sobel.png" alt="Sobel edge detection result" width="420">
-    </td>
-  </tr>
-</table>
-
-<table>
-  <tr>
-    <th colspan="2" align="center">Heart-shaped bokeh</th>
-  </tr>
-  <tr>
-    <th align="center">Before</th>
-    <th align="center">After</th>
-  </tr>
-  <tr>
-    <td>
-      <img src="docs/images/stars-original.png" alt="Original star field before heart-shaped bokeh" width="420">
-    </td>
-    <td>
-      <img src="docs/images/stars-heart-bokeh.png" alt="Heart-shaped bokeh result" width="420">
-    </td>
-  </tr>
-</table>
-
-> Sharpen is implemented and tested; a before/after gallery comparison is still to come.
+| Filter | Example |
+|---|---|
+| Grayscale | [Before](assets/kodim01.png) · [After](docs/images/kodim01-grayscale.png) |
+| Gaussian blur | [Before](docs/images/gaussian-detail-before.png) · [After](docs/images/gaussian-detail-after.png) |
+| Sobel edges | [Before](assets/kodim01.png) · [After](docs/images/kodim01-sobel.png) |
+| Heart bokeh | [Before](docs/images/stars-original.png) · [After](docs/images/stars-heart-bokeh.png) |
+| Sharpen | [Before](assets/kodim01.png) · [After](docs/images/kodim01-sharpen.png) |
 
 ## Build and run
 
