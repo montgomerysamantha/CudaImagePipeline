@@ -106,6 +106,7 @@ if(BUILD_TESTING)
     add_executable(test_edge_detection tests/test_edge_detection.cu)
     add_executable(test_pipeline tests/test_pipeline.cu)
     add_executable(test_heart_bokeh tests/test_heart_bokeh.cu)
+    add_executable(test_sharpen tests/test_sharpen.cu)
 
     set(cuda_test_targets
         test_grayscale
@@ -113,6 +114,7 @@ if(BUILD_TESTING)
         test_edge_detection
         test_pipeline
         test_heart_bokeh
+        test_sharpen
     )
 
     foreach(test_target IN LISTS cuda_test_targets)
@@ -133,4 +135,5 @@ if(BUILD_TESTING)
     add_test(NAME edge_detection COMMAND test_edge_detection)
     add_test(NAME pipeline COMMAND test_pipeline)
     add_test(NAME heart_bokeh COMMAND test_heart_bokeh)
+    add_test(NAME sharpen COMMAND test_sharpen)
 endif()

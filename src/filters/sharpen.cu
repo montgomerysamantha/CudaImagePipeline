@@ -17,18 +17,23 @@ __device__ unsigned char calculateNeighborhood(
     int down  = min(y + 1, height - 1);
 
     float center = input[(y * width + x) * 3 + channel];
+    float east  = input[(y * width + right) * 3 + channel];
     float west   = input[(y * width + left) * 3 + channel];
+    float north = input[(up * width + x) * 3 + channel];
+    float south = input[(down * width + x) * 3 + channel];
     float value = center + strength *
     (4.0f * center - north - south - east - west);
 
-    output[index] = static_cast<unsigned char>(fminf(255.0f, fmaxf(0.0f, value)));
+    return static_cast<unsigned char>(
+    fminf(255.0f, fmaxf(0.0f, value)));
 }
 
 __global__ void sharpenKernel(
     int width,
     int height,
     const unsigned char* input,
-    unsigned char* output)
+    unsigned char* output,
+    float strength)
 {
     const int x = blockIdx.x * blockDim.x + threadIdx.x;
     const int y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -39,10 +44,11 @@ __global__ void sharpenKernel(
     }
 
     const int index = (y * width + x) * 3;
-    const int gray = calculateNeighborhood(x, y);
-    output[index] = static_cast<unsigned char>(gray);
-    output[index + 1] = static_cast<unsigned char>(gray);
-    output[index + 2] = static_cast<unsigned char>(gray);
+    for (int channel = 0; channel < 3; ++channel)
+    {
+        output[index + channel] = calculateNeighborhood(
+            x, y, width, height, input, channel, strength);
+    }
 }
 
 void validateRgbPair(ConstImageView input, ImageView output)
@@ -65,7 +71,7 @@ void launchSharpen(ConstImageView input, ImageView output, float strength, cudaS
         (input.height + threads.y - 1) / threads.y);
 
     sharpenKernel<<<blocks, threads, 0, stream>>>(
-        input.width, input.height, input.data, output.data);
+        input.width, input.height, input.data, output.data, strength);
     CUDA_CHECK(cudaGetLastError());
 }
 
