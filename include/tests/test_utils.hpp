@@ -148,10 +148,32 @@ HostImage runFilter(const HostImage& input, Launcher launcher)
     DeviceImage deviceOutput(input.width, input.height, input.channels);
 
     HostImage output;
-    output.width = input.width;
-    output.height = input.height;
-    output.channels = input.channels;
-    output.pixels.resize(input.pixels.size());
+    output.allocate(input.width, input.height, input.channels);
+
+    deviceInput.uploadAsync(input.view(), stream.get());
+
+    const DeviceImage& readOnlyInput = deviceInput;
+    launcher(readOnlyInput.view(), deviceOutput.view(), stream.get());
+
+    deviceOutput.downloadAsync(output.view(), stream.get());
+    CUDA_CHECK(cudaStreamSynchronize(stream.get()));
+
+    return output;
+}
+
+template <typename Launcher>
+HostImage runResize(
+    const HostImage& input,
+    int outputWidth,
+    int outputHeight,
+    Launcher launcher)
+{
+    CudaStream stream;
+    DeviceImage deviceInput(input.width, input.height, input.channels);
+    DeviceImage deviceOutput(outputWidth, outputHeight, input.channels);
+
+    HostImage output;
+    output.allocate(outputWidth, outputHeight, input.channels);
 
     deviceInput.uploadAsync(input.view(), stream.get());
 

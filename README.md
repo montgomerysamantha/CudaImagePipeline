@@ -8,13 +8,13 @@
 
 ## TL;DR
 
-I'm building this project to learn CUDA by making things I can actually see:
+This project explores CUDA through visible image-processing results:
 turning photos grayscale, softening details, finding edges, sharpening images,
 and turning bright stars into hearts.
 
-CUDA lets me run C++ code on an NVIDIA graphics card (GPU), where many pixels
-can be processed at once. The interesting part is figuring out when that is
-actually faster. Copying an image to and from the GPU takes time too.
+CUDA runs C++ code on an NVIDIA graphics card (GPU), where many pixels can be
+processed at once. The project measures when that parallel processing pays off,
+including the time spent copying an image to and from the GPU.
 
 The pipeline sends an image to the GPU once, applies the selected filters, and
 brings the finished image back. **The goal is to spend more time processing
@@ -62,8 +62,8 @@ colored test summary. Add `-Verbose` to see every check and the build output.
 
 ## Technical walkthrough
 
-Here's how the pieces fit together, what I've measured, and what's still left
-to build. The gallery is a good place to start if you're just here for the pictures.
+The sections below explain how the pieces fit together, the measured results,
+and the remaining work. The gallery provides a visual introduction to the filters.
 
 ### Gallery
 
@@ -115,9 +115,9 @@ Sharpen is implemented and tested; its gallery comparison is still to come.
 
 ### Architecture
 
-An image lives in the computer's main memory when it is loaded. To process it
-on the GPU, I first copy it into GPU memory. Once the filters finish, I copy it
-back so it can be saved.
+An image lives in the computer's main memory when it is loaded. The pipeline
+copies it into GPU memory for processing, then copies the finished result back
+so it can be saved.
 
 On a discrete graphics card like the GTX 1060, the CPU and GPU have separate
 memory. These copies travel over **PCIe**, the connection between the graphics
@@ -162,8 +162,8 @@ See [pipeline orchestration](src/pipeline/image_pipeline.cu) and
 ### Filter status
 
 A CPU reference is a version of the same filter that runs on the processor.
-It gives me something to compare the GPU's pixels and speed against. A benchmark
-measures how long that work takes.
+It provides a baseline for comparing the GPU's output pixels and processing speed.
+A benchmark measures how long that work takes.
 
 | Stage | GPU implementation | CPU reference | Automated tests | Benchmark |
 |---|---|---|---|---|
@@ -222,8 +222,8 @@ build. The first table averages 20 runs on a 1960×1960 RGB image (10.991 MiB).
 Each CPU version uses one thread, and the CPU and GPU results matched exactly,
 byte for byte. Your timings will depend on your hardware and the image.
 
-Each row measures one filter. I still need to measure the full chain against
-running filters separately, and add a benchmark for sharpen.
+Each row measures one filter. Comparing the full chain with filters run separately
+and adding a sharpen benchmark remain planned work.
 
 #### Individual-filter timings
 
@@ -407,8 +407,8 @@ functions can contain multiple assertions and input combinations.
 | Heart bokeh GPU | 2 | CPU agreement across input combinations and launchers, invalid arguments |
 | Sharpen | 6 | 1×1 image, solid colors, known output, both clamp limits, zero strength |
 
-For small images, I can calculate the expected pixels by hand and check the exact
-answer. A 17×19 image also checks what happens when the image doesn't divide
+Small images allow hand-calculated expected pixels to be checked against the exact
+output. A 17×19 image also checks what happens when the image doesn't divide
 evenly into the GPU's 16×16 groups of threads. For larger patterns, four filters
 have CPU versions to compare against. This helps catch mistakes that are easy
 to miss by looking at a photo.
@@ -449,10 +449,6 @@ CudaLearning/
 ├── build/              Generated build files (ignored)
 └── output/             Generated result images (ignored)
 ```
-
-I kept the original exercises in [learning/](learning/README.md), from adding
-vectors to the first standalone image filters. They show where the project
-started and can be built separately from the current pipeline.
 
 ### Roadmap
 

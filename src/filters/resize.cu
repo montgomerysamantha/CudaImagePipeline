@@ -2,62 +2,8 @@
 
 #include "core/cuda_check.hpp"
 
+#include <cstddef>
 #include <stdexcept>
-/*
-inputWidth  = 5    outputWidth  = 3
-inputHeight = 1    outputHeight = 1
-Letter:    A  B  C  D  E
-Input X:   0  1  2  3  4
-Input Y:   0  0  0  0  0
-
-sourceX = floor(outputX × inputWidth  / outputWidth)
-sourceY = floor(outputY × inputHeight / outputHeight)
-
-Which source indices do output positions 0, 1, and 2 select?
-outputX = 0
-
-sourceX = floor(0 × 5 / 3) = 0
-sourceY = floor(0 × 1 / 1) = 0
-A
-
-outputX = 1
-
-sourceX = floor(1 × 5 / 3) = 1
-sourceY = floor(0 × 1 / 1) = 0
-
-B
-
-outputX = 2
-
-sourceX = floor(2 × 5 / 3) = 3
-sourceY = floor(0 × 1 / 1) = 0
-
-D
-
-Resize [A B C] from width 3 to 5:
-sourceX = floor(outputX × 3 / 5)
-
-outputX:  0  1  2  3  4
-sourceX:  ?  ?  ?  ?  ?
-
-outputX = 0
-sourceX = floor(0 × 3 / 5) = 0
-
-outputX = 1
-sourceX = floor(1 x 3 / 5) = 0
-
-outputX = 2
-sourceX = floor(2 x 3 / 5) = 1
-
-outputX = 3
-sourceX = floor(3 x 3 / 5) = 1
-
-outputX = 4
-sourceX = floor(4 x 3 / 5) = 2
-
-outputX:  0  1  2  3  4
-sourceX:  0  0  1  1  2
-*/
 
 namespace
 {
@@ -88,30 +34,19 @@ __global__ void resizeKernel(
     unsigned char g = input[inputIndex + 1];
     unsigned char b = input[inputIndex + 2];
 
-    output[outputIndex] = static_cast<unsigned char>(r);
-    output[outputIndex + 1] = static_cast<unsigned char>(g);
-    output[outputIndex + 2] = static_cast<unsigned char>(b);
+    output[outputIndex] = r;
+    output[outputIndex + 1] = g;
+    output[outputIndex + 2] = b;
 }
 
-void validateRgbPair(ConstImageView input, ImageView output)
-{
-    if (input.data == nullptr || output.data == nullptr ||
-        input.width != output.width || input.height != output.height ||
-        input.channels != 3 || output.channels != 3)
-    {
-        throw std::invalid_argument("Grayscale expects equally sized RGB input and output images");
-    }
-}
-}
-
-void launchResize(ConstImageView input, ImageView output, cudaStream_t stream)
+void verifyInputOutputPointers(ConstImageView input, ImageView output)
 {
     if (input.data == nullptr || output.data == nullptr)
     {
         throw std::invalid_argument("Resize requires non-null image data");
     }
 
-    if (input.width < 0 || input.height < 0 || output.width < 0 || output.height < 0)
+    if (input.width <= 0 || input.height <= 0 || output.width <= 0 || output.height <= 0)
     {
         throw std::invalid_argument("Resize requires positive dimensions");
     }
@@ -125,6 +60,13 @@ void launchResize(ConstImageView input, ImageView output, cudaStream_t stream)
     {
         throw std::invalid_argument("Resize requires separate input and output storage");
     }
+}
+
+}
+
+void launchResize(ConstImageView input, ImageView output, cudaStream_t stream)
+{
+    verifyInputOutputPointers(input, output);
 
     constexpr dim3 threads(16, 16);
     const dim3 blocks(

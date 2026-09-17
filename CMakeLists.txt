@@ -98,6 +98,9 @@ target_link_libraries(benchmark_heart_bokeh PRIVATE image_pipeline image_referen
 set_target_properties(benchmark_heart_bokeh PROPERTIES CUDA_RUNTIME_LIBRARY Shared)
 
 if(BUILD_TESTING)
+    add_executable(test_host_image tests/test_host_image.cpp)
+    target_include_directories(test_host_image PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    add_test(NAME host_image COMMAND test_host_image)
     add_executable(test_heart_bokeh_cpu tests/test_heart_bokeh_cpu.cpp)
     target_link_libraries(test_heart_bokeh_cpu PRIVATE image_references)
     add_test(NAME heart_bokeh_cpu COMMAND test_heart_bokeh_cpu)
@@ -107,6 +110,7 @@ if(BUILD_TESTING)
     add_executable(test_pipeline tests/test_pipeline.cu)
     add_executable(test_heart_bokeh tests/test_heart_bokeh.cu)
     add_executable(test_sharpen tests/test_sharpen.cu)
+    add_executable(test_resize tests/test_resize.cu)
 
     set(cuda_test_targets
         test_grayscale
@@ -115,6 +119,7 @@ if(BUILD_TESTING)
         test_pipeline
         test_heart_bokeh
         test_sharpen
+        test_resize
     )
 
     foreach(test_target IN LISTS cuda_test_targets)
@@ -136,4 +141,5 @@ if(BUILD_TESTING)
     add_test(NAME pipeline COMMAND test_pipeline)
     add_test(NAME heart_bokeh COMMAND test_heart_bokeh)
     add_test(NAME sharpen COMMAND test_sharpen)
+    add_test(NAME resize COMMAND test_resize)
 endif()
