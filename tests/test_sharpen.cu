@@ -1,3 +1,4 @@
+#include "tests/test_runner.hpp"
 #include "filters/sharpen.hpp"
 #include "tests/test_utils.hpp"
 
@@ -214,22 +215,16 @@ int main()
 {
     try
     {
-        int passed = 0;
-        auto run = [&](const char* name, auto testFunction)
-        {
-            testFunction();
-            ++passed;
-            std::cout << "PASS: " << name << '\n';
-        };
+        test::Runner runner;
 
-        run("One pixel", testOnePixelImage);
-        run("Solid color", testSolidColorPreserved);
-        run("Known output", testSharpenOutputValues);
-        run("Bright center clamp", testBrightCenterClampsTo255);
-        run("Dark center clamp", testDarkCenterClampsTo0);
-        run("Zero strength", testZeroStrengthSharpen);
+        runner.run("One pixel", testOnePixelImage);
+        runner.run("Solid color", testSolidColorPreserved);
+        runner.run("Known output", testSharpenOutputValues);
+        runner.run("Bright center clamp", testBrightCenterClampsTo255);
+        runner.run("Dark center clamp", testDarkCenterClampsTo0);
+        runner.run("Zero strength", testZeroStrengthSharpen);
 
-        std::cout << "Sharpen: " << passed << " tests passed!\n";
+        runner.summary("Sharpen");
         return 0;
     }
     catch (const std::exception& error)

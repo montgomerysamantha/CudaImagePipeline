@@ -1,3 +1,4 @@
+#include "tests/test_runner.hpp"
 #include "filters/gaussian_blur.hpp"
 #include "reference/gaussian_blur_cpu.hpp"
 #include "tests/test_utils.hpp"
@@ -169,12 +170,13 @@ int main()
 {
     try
     {
-        testSolidColorRemainsUnchanged();
-        testKnownImpulsePattern();
-        testAgainstCpuReference();
-        testOnePixelImage();
-        testInvalidImageShapeIsRejected();
-        std::cout << "Gaussian blur tests passed!\n";
+        test::Runner runner;
+        runner.run("testSolidColorRemainsUnchanged", testSolidColorRemainsUnchanged);
+        runner.run("testKnownImpulsePattern", testKnownImpulsePattern);
+        runner.run("testAgainstCpuReference", testAgainstCpuReference);
+        runner.run("testOnePixelImage", testOnePixelImage);
+        runner.run("testInvalidImageShapeIsRejected", testInvalidImageShapeIsRejected);
+        runner.summary("Gaussian blur");
         return 0;
     }
     catch (const std::exception& error)

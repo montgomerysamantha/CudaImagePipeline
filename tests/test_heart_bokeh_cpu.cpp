@@ -1,3 +1,4 @@
+#include "tests/test_runner.hpp"
 #include "reference/heart_bokeh_cpu.hpp"
 #include <iostream>
 #include <limits>
@@ -108,9 +109,10 @@ int main()
 {
     try
     {
-        testZeroIntensityPreservesInput();
-        testImpulseAndValidation();
-        std::cout << "Heart bokeh CPU checks passed\n";
+        test::Runner runner;
+        runner.run("testZeroIntensityPreservesInput", testZeroIntensityPreservesInput);
+        runner.run("testImpulseAndValidation", testImpulseAndValidation);
+        runner.summary("Heart bokeh CPU");
     }
     catch (const std::exception &error)
     {

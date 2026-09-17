@@ -1,3 +1,4 @@
+#include "tests/test_runner.hpp"
 #include "filters/gaussian_blur.hpp"
 #include "filters/grayscale.hpp"
 #include "filters/heart_bokeh.hpp"
@@ -295,14 +296,15 @@ int main()
 {
     try
     {
-        testDisabledStagesPreserveInput();
-        testBokehPipeline();
-        testSingleEnabledStageMatchesDirectLauncher();
-        testStageOrdering();
-        testRepeatedProcessCalls();
-        testBufferReallocationForNewDimensions();
-        testInvalidInputIsRejected();
-        std::cout << "Pipeline tests passed\n";
+        test::Runner runner;
+        runner.run("testDisabledStagesPreserveInput", testDisabledStagesPreserveInput);
+        runner.run("testBokehPipeline", testBokehPipeline);
+        runner.run("testSingleEnabledStageMatchesDirectLauncher", testSingleEnabledStageMatchesDirectLauncher);
+        runner.run("testStageOrdering", testStageOrdering);
+        runner.run("testRepeatedProcessCalls", testRepeatedProcessCalls);
+        runner.run("testBufferReallocationForNewDimensions", testBufferReallocationForNewDimensions);
+        runner.run("testInvalidInputIsRejected", testInvalidInputIsRejected);
+        runner.summary("Pipeline");
         return 0;
     }
     catch (const std::exception& error)

@@ -1,3 +1,4 @@
+#include "tests/test_runner.hpp"
 #include "filters/edge_detection.hpp"
 #include "tests/test_utils.hpp"
 
@@ -227,12 +228,13 @@ int main()
 {
     try
     {
-        testSolidGrayscaleImageHasNoEdges();
-        testKnownVerticalEdge();
-        testBorderPixelsAreBlack();
-        testGlobalAndSharedImplementationsMatch();
-        testInvalidImageShapeIsRejected();
-        std::cout << "Edge-detection tests passed\n";
+        test::Runner runner;
+        runner.run("testSolidGrayscaleImageHasNoEdges", testSolidGrayscaleImageHasNoEdges);
+        runner.run("testKnownVerticalEdge", testKnownVerticalEdge);
+        runner.run("testBorderPixelsAreBlack", testBorderPixelsAreBlack);
+        runner.run("testGlobalAndSharedImplementationsMatch", testGlobalAndSharedImplementationsMatch);
+        runner.run("testInvalidImageShapeIsRejected", testInvalidImageShapeIsRejected);
+        runner.summary("Edge detection");
         return 0;
     }
     catch (const std::exception& error)

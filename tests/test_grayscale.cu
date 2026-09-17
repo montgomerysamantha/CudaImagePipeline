@@ -1,3 +1,4 @@
+#include "tests/test_runner.hpp"
 #include "filters/grayscale.hpp"
 #include "reference/grayscale_cpu.hpp"
 #include "tests/test_utils.hpp"
@@ -122,11 +123,12 @@ int main()
 {
     try
     {
-        testKnownRgbPixels();
-        testAlreadyGrayscalePixelsRemainUnchanged();
-        testDimensionsOutsideBlockSize();
-        testInvalidImageShapeIsRejected();
-        std::cout << "Grayscale tests passed\n";
+        test::Runner runner;
+        runner.run("testKnownRgbPixels", testKnownRgbPixels);
+        runner.run("testAlreadyGrayscalePixelsRemainUnchanged", testAlreadyGrayscalePixelsRemainUnchanged);
+        runner.run("testDimensionsOutsideBlockSize", testDimensionsOutsideBlockSize);
+        runner.run("testInvalidImageShapeIsRejected", testInvalidImageShapeIsRejected);
+        runner.summary("Grayscale");
         return 0;
     }
     catch (const std::exception& error)

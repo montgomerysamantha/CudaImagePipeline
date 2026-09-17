@@ -1,3 +1,4 @@
+#include "tests/test_runner.hpp"
 #include "filters/heart_bokeh.hpp"
 #include "reference/heart_bokeh_cpu.hpp"
 #include "tests/test_utils.hpp"
@@ -118,9 +119,10 @@ int main()
 {
     try
     {
-        testGpuAgreement();
-        testInvalidArguments();
-        std::cout << "Heart bokeh GPU and contract checks passed\n";
+        test::Runner runner;
+        runner.run("testGpuAgreement", testGpuAgreement);
+        runner.run("testInvalidArguments", testInvalidArguments);
+        runner.summary("Heart bokeh GPU");
         return 0;
     }
     catch (const std::exception &error)
