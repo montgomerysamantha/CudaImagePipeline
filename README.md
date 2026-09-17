@@ -540,7 +540,7 @@ Direct `cmake --build` and `ctest` commands from the quick start are also availa
 ### Repository map
 
 ```text
-CudaLearning/
+CudaImagePipeline/
 ├── CMakeLists.txt       Build targets and CTest registration
 ├── run-tests.ps1        Rebuild + colored test reporting
 ├── src/
