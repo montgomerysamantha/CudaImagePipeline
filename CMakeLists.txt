@@ -1,11 +1,17 @@
 cmake_minimum_required(VERSION 3.22)
 
+# Keep the tested GTX 1060 default, while allowing either the project option
+# or CMake's standard architecture setting to select other GPUs.
+set(CUDA_ARCHITECTURES "61" CACHE STRING "CUDA architecture list (for example: 61 or 75;86)")
+if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+    set(CMAKE_CUDA_ARCHITECTURES "${CUDA_ARCHITECTURES}")
+endif()
+
 project(CudaLearning LANGUAGES CXX CUDA)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(CMAKE_CUDA_ARCHITECTURES 61)
 set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
@@ -38,6 +44,7 @@ add_library(image_references
     src/reference/gaussian_blur_cpu.cpp
     src/reference/sobel_cpu.cpp
     src/reference/heart_bokeh_cpu.cpp
+    src/reference/sharpen_cpu.cpp
 )
 
 target_include_directories(image_references
@@ -92,6 +99,10 @@ set_target_properties(
 )
 
 include(CTest)
+
+add_executable(benchmark_sharpen benchmarks/benchmark_sharpen.cu)
+target_link_libraries(benchmark_sharpen PRIVATE image_pipeline image_references)
+set_target_properties(benchmark_sharpen PROPERTIES CUDA_RUNTIME_LIBRARY Shared)
 
 add_executable(benchmark_pipeline benchmarks/benchmark_pipeline.cu)
 target_link_libraries(benchmark_pipeline PRIVATE image_pipeline)

@@ -1,5 +1,6 @@
 #include "tests/test_runner.hpp"
 #include "filters/sharpen.hpp"
+#include "reference/sharpen_cpu.hpp"
 #include "tests/test_utils.hpp"
 
 #include <exception>
@@ -15,6 +16,20 @@ HostImage runSharpen(const HostImage& input, float strength = 1.0f)
         {
             launchSharpen(in, out, strength, stream);
         });
+}
+
+HostImage runSharpenCpu(const HostImage& input, float strength = 1.0f)
+{
+    HostImage output;
+    output.allocate(input.width, input.height, input.channels);
+
+    reference::launchSharpenCPU(
+        input.view(),
+        output.view(),
+        strength
+    );
+
+    return output;
 }
 
 void testOnePixelImage()
@@ -35,12 +50,19 @@ void testOnePixelImage()
 
     // Act
     const HostImage actual = runSharpen(input);
+    const HostImage cpuOutput = runSharpenCpu(input);
 
     // Assert
     test::requirePixelsEqual(
         actual,
         expected,
         "testOnePixelImage"
+    );
+
+    test::requirePixelsEqual(
+        cpuOutput,
+        expected,
+        "CPU sharpen: One pixel"
     );
 }
 
@@ -62,12 +84,19 @@ void testSolidColorPreserved()
 
     // Act
     const HostImage actual = runSharpen(input);
+    const HostImage cpuOutput = runSharpenCpu(input);
 
     // Assert
     test::requirePixelsEqual(
         actual,
         expected,
         "testSolidColorPreserved"
+    );
+
+    test::requirePixelsEqual(
+        cpuOutput,
+        expected,
+        "CPU sharpen: Solid color"
     );
 }
 
@@ -110,12 +139,19 @@ void testSharpenOutputValues()
 
     // Act
     const HostImage actual = runSharpen(input);
+    const HostImage cpuOutput = runSharpenCpu(input);
 
     // Assert
     test::requirePixelsEqual(
         actual,
         expected,
         "testSharpenOutputValues"
+    );
+
+    test::requirePixelsEqual(
+        cpuOutput,
+        expected,
+        "CPU sharpen: Known impulse"
     );
 }
 
@@ -151,12 +187,19 @@ void testBrightCenterClampsTo255()
     HostImage expected = input;
     // Act
     const HostImage actual = runSharpen(input);
+    const HostImage cpuOutput = runSharpenCpu(input);
 
     // Assert
     test::requirePixelsEqual(
         actual,
         expected,
         "testBrightCenterClampsTo255"
+    );
+
+    test::requirePixelsEqual(
+        cpuOutput,
+        expected,
+        "CPU sharpen: Bright clamp"
     );
 }
 
@@ -192,12 +235,19 @@ void testDarkCenterClampsTo0()
     HostImage expected = input;
     // Act
     const HostImage actual = runSharpen(input);
+    const HostImage cpuOutput = runSharpenCpu(input);
 
     // Assert
     test::requirePixelsEqual(
         actual,
         expected,
         "testDarkCenterClampsTo0"
+    );
+
+    test::requirePixelsEqual(
+        cpuOutput,
+        expected,
+        "CPU sharpen: Dark clamp"
     );
 }
 
@@ -206,9 +256,38 @@ void testZeroStrengthSharpen()
     const HostImage input = test::makeCoordinatePatternImage(17, 19);
 
     const HostImage actual = runSharpen(input, 0.0f);
+    const HostImage cpuOutput = runSharpenCpu(input, 0.0f);
 
     test::requirePixelsEqual(
         actual, input, "testZeroStrengthSharpen");
+
+    test::requirePixelsEqual(
+        cpuOutput,
+        actual,
+        "CPU sharpen: Zero strength"
+    );
+}
+
+void testSharpenMatchesCpuReference()
+{
+    // Exercise partial CUDA blocks and borders with varying RGB values.
+    // Arrange
+    const HostImage input = test::makeCoordinatePatternImage(17, 19);
+
+    for (float strength : {0.0f, 0.5f, 1.0f})
+    {
+        // Act
+        const HostImage expected = runSharpenCpu(input, strength);
+        const HostImage actual = runSharpen(input, strength);
+
+        // Assert
+        test::requirePixelsEqual(
+            actual,
+            expected,
+            "CPU/GPU sharpen agreement at strength "
+                + std::to_string(strength)
+        );
+    }
 }
 
 int main()
@@ -223,6 +302,7 @@ int main()
         runner.run("Bright center clamp", testBrightCenterClampsTo255);
         runner.run("Dark center clamp", testDarkCenterClampsTo0);
         runner.run("Zero strength", testZeroStrengthSharpen);
+        runner.run("CPU reference agreement", testSharpenMatchesCpuReference);
 
         runner.summary("Sharpen");
         return 0;

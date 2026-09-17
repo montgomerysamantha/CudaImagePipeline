@@ -1,0 +1,34 @@
+Strength: 1; warm-up runs: 3
+Saved CPU sharpen result to output\lena_sharpen_cpu.png
+Saved GPU sharpen result to output\lena_sharpen_gpu.png
+
+Sharpen Benchmark
+=================
+Image:        1960 x 1960 x 3 channels
+Input file:   .\assets\lena.jpg
+Preparation:  Source RGB used without preprocessing
+Image size:   10.991 MiB
+Runs:         20
+Correctness:  PASS
+
+Compute-only
+------------
+CPU reference                    117.592 ms
+GPU sharpen kernel                 0.749 ms
+
+GPU end-to-end
+--------------
+Host to device                     4.895 ms
+GPU sharpen kernel                 0.749 ms
+Device to host                     4.427 ms
+Measured total                    10.220 ms
+
+Speedups
+--------
+CPU to GPU compute               157.075x
+CPU to GPU end-to-end             11.506x
+
+Measured component breakdown
+--------------------
+Transfers                         92.566%
+Kernel                             7.434%

@@ -2,6 +2,7 @@
 
 #include "core/cuda_check.hpp"
 
+#include <cstddef>
 #include <stdexcept>
 
 namespace
@@ -16,11 +17,11 @@ __device__ unsigned char calculateNeighborhood(
     int up    = max(y - 1, 0);
     int down  = min(y + 1, height - 1);
 
-    float center = input[(y * width + x) * 3 + channel];
-    float east  = input[(y * width + right) * 3 + channel];
-    float west   = input[(y * width + left) * 3 + channel];
-    float north = input[(up * width + x) * 3 + channel];
-    float south = input[(down * width + x) * 3 + channel];
+    float center = input[(static_cast<std::size_t>(y) * width + x) * 3 + channel];
+    float east  = input[(static_cast<std::size_t>(y) * width + right) * 3 + channel];
+    float west   = input[(static_cast<std::size_t>(y) * width + left) * 3 + channel];
+    float north = input[(static_cast<std::size_t>(up) * width + x) * 3 + channel];
+    float south = input[(static_cast<std::size_t>(down) * width + x) * 3 + channel];
     float value = center + strength *
     (4.0f * center - north - south - east - west);
 
@@ -43,7 +44,7 @@ __global__ void sharpenKernel(
         return;
     }
 
-    const int index = (y * width + x) * 3;
+    const std::size_t index = (static_cast<std::size_t>(y) * width + x) * 3;
     for (int channel = 0; channel < 3; channel++)
     {
         output[index + channel] = calculateNeighborhood(

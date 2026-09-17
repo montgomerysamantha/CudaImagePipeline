@@ -29,7 +29,7 @@ That makes avoiding unnecessary copies just as important as writing a fast kerne
 | Heart effect vs. the CPU version using one thread | **113.7x faster, including image transfers** |
 | Gaussian blur vs. the CPU version using one thread | **68.8x faster processing · 6.0x including transfers** |
 | Heart effect with pixels shared between nearby GPU threads | **2.88x faster processing** |
-| Automated checks | **57 test functions in 9 test programs** |
+| Automated checks | **58 test functions in 9 test programs** |
 
 These numbers average 20 runs on a 1960×1960 color image using CUDA 12.9 and a
 Release build. The individual-filter results were measured separately; the complete
@@ -39,8 +39,18 @@ chain comparison is recorded below. [How the timings work](#performance-and-meth
 
 Tested setup: **Windows · Visual Studio 2022 with Desktop C++ · CUDA 12.9 · CMake 3.22+**.
 Open a terminal in the main project folder with CMake and the CUDA tools available.
-The current build targets the GTX 1060 (`CMAKE_CUDA_ARCHITECTURES 61`); edit that
-setting in [CMakeLists.txt](CMakeLists.txt) for another GPU architecture.
+The default CUDA target is `61` (the tested GTX 1060). Set the cache option
+`CUDA_ARCHITECTURES` for your GPU; no source edit is needed. For example:
+
+```powershell
+cmake -S . -B build -DCUDA_ARCHITECTURES="75;86" -DBUILD_TESTING=ON
+```
+
+Use architecture values supported by your CUDA toolkit and target hardware.
+An explicitly supplied `CMAKE_CUDA_ARCHITECTURES` takes precedence over this
+project option. On an existing build, remove an old cached standard override
+with `-U CMAKE_CUDA_ARCHITECTURES` if you want to use `CUDA_ARCHITECTURES` instead.
+The CMake project is not Windows-only; Windows is the verified setup documented here.
 
 ```powershell
 cmake -S . -B build -DBUILD_TESTING=ON
@@ -58,7 +68,7 @@ colored test summary. Add `-Verbose` to see every check and the build output.
 
 [Gallery](#gallery) · [Architecture](#architecture) · [Filter status](#filter-status) ·
 [Configuration](#configure-the-pipeline) · [Benchmarks](#performance-and-methodology) ·
-[Tests](#correctness-and-test-coverage) · [Roadmap](#roadmap)
+[Tests](#correctness-and-test-coverage) · [Milestones](#completed-milestones-and-future-exploration)
 
 ## Technical walkthrough
 
@@ -111,7 +121,14 @@ original and the result of one effect, rather than stacking all the effects toge
 </table>
 
 [Full blur input](assets/kodim01.png) · [Full blur output](docs/images/kodim01-gaussian-blur.png).
-Sharpen is implemented and tested; its gallery comparison is still to come.
+<table>
+  <tr><th colspan="2">Sharpen (strength 1)</th></tr>
+  <tr><th>Before</th><th>After</th></tr>
+  <tr>
+    <td><img src="assets/kodim01.png" alt="Original building image" width="420"></td>
+    <td><img src="docs/images/kodim01-sharpen.png" alt="Building image after sharpening" width="420"></td>
+  </tr>
+</table>
 
 ### Architecture
 
@@ -171,8 +188,8 @@ A benchmark measures how long that work takes.
 | Gaussian blur | Shared-memory 3×3; global baseline in benchmark | Yes | Yes | Yes |
 | Sobel | Global-memory 3×3; shared-memory comparison | Yes | Yes | Yes |
 | Heart bokeh | Shared-memory gather; global comparison | Yes | Yes | Yes |
-| Sharpen | Center pixel and four neighbors, adjustable strength | Planned | Yes | Planned |
-| Resize | Nearest-neighbor sampling with destination-sized pipeline buffer | Planned | Yes | Planned |
+| Sharpen | Center pixel and four neighbors, adjustable strength | Yes | Yes | Yes |
+| Resize | Nearest-neighbor sampling with destination-sized pipeline buffer | No | Yes | Included in full-chain benchmark |
 
 Sobel looks for changes in brightness. Enable grayscale before it when using
 color photos. The Sobel benchmark handles that conversion before timing begins.
@@ -242,8 +259,7 @@ build. The first table averages 20 runs on a 1960×1960 RGB image (10.991 MiB).
 Each CPU version uses one thread, and the CPU and GPU results matched exactly,
 byte for byte. Your timings will depend on your hardware and the image.
 
-Each row measures one filter. The full-chain comparison appears below; profiling
-and adding a sharpen benchmark remain planned work.
+Each row measures one filter. The full-chain comparison appears below.
 
 #### Complete pipeline versus transfers around each stage
 
@@ -296,6 +312,7 @@ workloads and hardware before generalizing the speedups.
 | Gaussian blur | 59.178 ms | 0.861 ms | 68.771x | 9.888 ms | 5.985x |
 | Sobel edges | 28.501 ms | 0.625 ms | 45.588x | 10.032 ms | 2.841x |
 | Heart bokeh | 2036.950 ms | 9.669 ms | 210.658x | 17.918 ms | 113.679x |
+| Sharpen (strength 1) | 117.592 ms | 0.749 ms | 157.075x | 10.220 ms | 11.506x |
 
 **Compute speedup** measures just the pixel-processing work. **End-to-end** also
 counts copying the image to the GPU, copying it back, and waiting for completion.
@@ -304,6 +321,29 @@ below 1 means the GPU took longer.
 
 Grayscale is a useful example: its GPU calculation is fast, but copying the image
 takes enough time that the CPU finishes the whole job sooner.
+
+#### Sharpen validation and benchmark
+
+The CPU reference and GPU implementation use clamped neighbors and saturate
+RGB values to 0–255. Tests check both against hand-calculated images and compare
+a 17×19 pattern at strengths 0, 0.5, and 1. The benchmark fixes strength at 1,
+warms each implementation three times, and checks byte-for-byte agreement before
+and after timing. It saves both CPU and GPU PNG outputs.
+
+The sharpen row above was recorded separately on the GTX 1060 3GB with CUDA 12.9,
+a Release build, and 20 runs. CPU timing uses one thread; GPU kernel timing uses
+CUDA events. End-to-end timing includes upload, kernel, download, and synchronization
+with reusable buffers; image I/O and allocation are excluded. This is a simple
+CPU reference, not an optimized CPU image library comparison. Means from one run
+are not confidence intervals or hardware-independent speedups.
+
+| Input | CPU ms | GPU kernel ms | GPU end-to-end ms | Exact match |
+|---|---:|---:|---:|---|
+| lena.jpg, 1960×1960 | 117.592 | 0.749 | 10.220 | Yes |
+| kodim01.png, 768×512 | 13.115 | 0.060 | 1.348 | Yes |
+
+Raw results: [Lena](docs/sharpen-benchmark-lena.txt),
+[Kodak image](docs/sharpen-benchmark-kodim01.txt).
 
 #### Global vs. shared memory
 
@@ -437,12 +477,13 @@ From the repository root after a Release build:
 
 ```powershell
 .\build\Release\benchmark_grayscale.exe .\assets\lena.jpg
+.\build\Release\benchmark_sharpen.exe .\assets\lena.jpg
 .\build\Release\benchmark_gaussian_blur.exe .\assets\lena.jpg
 .\build\Release\benchmark_sobel.exe .\assets\lena.jpg
 .\build\Release\benchmark_heart_bokeh.exe .\assets\lena.jpg 200 0.05 20
 ```
 
-The first three default to `assets/lena.jpg` when no path is supplied. Bokeh
+Grayscale, sharpen, Gaussian blur, and Sobel default to `assets/lena.jpg` when no path is supplied. Bokeh
 accepts `image-path | --demo`, threshold, intensity, and run count:
 
 ```powershell
@@ -457,7 +498,7 @@ overwrite outputs. Loading and saving images are excluded from timed work.
 
 ### Correctness and test coverage
 
-**57 test functions in 9 executables.** CTest counts each executable as one test;
+**58 test functions in 9 executables.** CTest counts each executable as one test;
 functions can contain multiple assertions and input combinations.
 
 | Suite | Functions | Coverage |
@@ -468,13 +509,13 @@ functions can contain multiple assertions and input combinations.
 | Pipeline | 13 | Disabled stages, bokeh/sharpen/resize ordering, buffer reuse/reallocation, resize settings, invalid input |
 | Heart bokeh CPU | 2 | Zero intensity, impulse geometry, clipping, saturation, argument validation |
 | Heart bokeh GPU | 2 | CPU agreement across input combinations and launchers, invalid arguments |
-| Sharpen | 6 | 1×1 image, solid colors, known output, both clamp limits, zero strength |
+| Sharpen | 7 | CPU/GPU known outputs, border cases, clamping, zero strength, agreement at strengths 0/0.5/1 |
 | Resize | 12 | Horizontal/vertical enlargement, shrinking, same shape, 2D mapping, one-pixel cases, invalid views |
 | HostImage | 8 | Defaults, views, copies, manual setup, allocation/reallocation, rejected requests preserve contents |
 
 Small images allow hand-calculated expected pixels to be checked against the exact
 output. A 17×19 image also checks what happens when the image doesn't divide
-evenly into the GPU's 16×16 groups of threads. For larger patterns, four filters
+evenly into the GPU's 16×16 groups of threads. For larger patterns, five filters
 have CPU versions to compare against. This helps catch mistakes that are easy
 to miss by looking at a photo.
 
@@ -519,10 +560,10 @@ CudaLearning/
 └── output/             Generated result images (ignored)
 ```
 
-### Roadmap
+### Completed milestones and future exploration
 
 - **Completed:** nearest-neighbor resize, reusable destination buffer, and standalone/pipeline tests.
-- **Sharpen:** CPU reference, benchmark, and a before/after gallery comparison.
+- **Completed:** sharpen CPU reference, CPU/GPU validation, benchmark, and gallery comparison.
 - **Measurement:** profile the full-chain timing differences; try different bokeh thread-group shapes.
 - **Exploration:** bilinear resize, pinned host memory, kernel fusion, and CUDA Graphs.
 - **Portability:** Linux build verification and GPU-backed CI.

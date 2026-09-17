@@ -1,0 +1,34 @@
+Strength: 1; warm-up runs: 3
+Saved CPU sharpen result to output\kodim01_sharpen_cpu.png
+Saved GPU sharpen result to output\kodim01_sharpen_gpu.png
+
+Sharpen Benchmark
+=================
+Image:        768 x 512 x 3 channels
+Input file:   .\assets\kodim01.png
+Preparation:  Source RGB used without preprocessing
+Image size:   1.125 MiB
+Runs:         20
+Correctness:  PASS
+
+Compute-only
+------------
+CPU reference                     13.115 ms
+GPU sharpen kernel                 0.060 ms
+
+GPU end-to-end
+--------------
+Host to device                     0.495 ms
+GPU sharpen kernel                 0.060 ms
+Device to host                     0.491 ms
+Measured total                     1.348 ms
+
+Speedups
+--------
+CPU to GPU compute               218.119x
+CPU to GPU end-to-end              9.729x
+
+Measured component breakdown
+--------------------
+Transfers                         94.252%
+Kernel                             5.748%
